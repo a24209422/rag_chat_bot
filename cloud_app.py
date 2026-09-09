@@ -35,7 +35,12 @@ if user := st.chat_input("說點什麼…"):
             },
             timeout=120,
         )
-    reply = resp.json()["choices"][0]["message"]["content"]
+    data = resp.json()
+    if resp.status_code != 200:
+        st.error(f"API 錯誤（{resp.status_code}）：{data.get('error', data)}")
+        st.stop()
+
+    reply = data["choices"][0]["message"]["content"]
 
     st.chat_message("assistant").write(reply)
     st.session_state.messages.append({"role": "assistant", "content": reply})
