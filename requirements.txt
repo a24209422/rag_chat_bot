@@ -1,0 +1,8 @@
+# 雲端版（Gemini）
+google-genai
+python-dotenv
+numpy
+
+# 地端版（llama.cpp + 本地 embedding）
+requests
+sentence-transformers
