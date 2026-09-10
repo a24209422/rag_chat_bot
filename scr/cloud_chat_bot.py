@@ -7,7 +7,10 @@ import cloud_rag as rag
 
 load_dotenv()
 
-client = genai.Client(api_key=os.environ["GEMINI_API_KEY"])
+KEY = os.environ.get("GEMINI_API_KEY")          # ← 不要用 os.environ[...]
+if not KEY:
+    raise RuntimeError("找不到 GEMINI_API_KEY：本機放 .env，雲端放 App settings → Secrets")
+client = genai.Client(api_key=KEY)
 MODEL = "gemini-flash-latest"
 SYSTEM = ("你是客服助理。只依據提供的【資料】回答，"     # ← 換成 RAG 版
           "資料沒提到的就說「資料裡沒有」。")

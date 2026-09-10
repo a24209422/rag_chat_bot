@@ -15,7 +15,10 @@ DOCS = [
     "保固政策：電子產品保固一年，人為損壞不在範圍內。",
 ]
 
-client = genai.Client(api_key=os.environ["GEMINI_API_KEY"])
+KEY = os.environ.get("GEMINI_API_KEY")          # ← 不要用 os.environ[...]
+if not KEY:
+    raise RuntimeError("找不到 GEMINI_API_KEY：本機放 .env，雲端放 App settings → Secrets")
+client = genai.Client(api_key=KEY)
 MODEL = "gemini-embedding-001"
 DIM = 768        # 預設 3072；截短成 768 省記憶體與比對時間（靠 [[MRL]]）
 
