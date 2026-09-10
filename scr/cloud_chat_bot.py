@@ -12,44 +12,56 @@ MODEL = "gemini-flash-latest"
 SYSTEM = ("你是客服助理。只依據提供的【資料】回答，"     # ← 換成 RAG 版
           "資料沒提到的就說「資料裡沒有」。")
 
-history = []
 
-while True:
-    user = input("\n你 > ").strip()
-    if user in ("exit", "quit", ""):
-        break
-
-    hits = rag.retrieve(user, k=2)                         # ← 新增：先檢索
+def ask(user, history, k=2):
+    """檢索 + 生成。history 會就地更新，回傳 (reply, hits)。
+    失敗時丟例外，history 維持呼叫前的樣子。"""
+    hits = rag.retrieve(user, k=k)                        # ← 先檢索
     context = "\n".join(f"[{i+1}] {d}" for i, (d, _) in enumerate(hits))
     prompt = f"【資料】\n{context}\n\n【問題】\n{user}"
 
-    for d, s in hits:                                      # ← 新增：看檢索品質
-        print(f"  ↳ {s:.3f}  {d[:30]}…")
-
     history.append({"role": "user", "parts": [{"text": user}]})    # 歷史存乾淨的
 
-    to_send = list(history)                                # ← 新增：分離送出的版本
+    to_send = list(history)                               # ← 分離送出的版本
     to_send[-1] = {"role": "user", "parts": [{"text": prompt}]}
 
     try:
         resp = client.models.generate_content(
             model=MODEL,
-            contents=to_send,                              # ← 送 to_send，不是 history
+            contents=to_send,                             # ← 送 to_send，不是 history
             config=types.GenerateContentConfig(
                 system_instruction=SYSTEM,
-                temperature=0.2,                           # ← 降低
+                temperature=0.2,                          # ← 降低
             ),
         )
-    except Exception as e:
+    except Exception:
         history.pop()
-        print(f"✗ {e}")
-        continue
+        raise
 
     reply = resp.text
     if not reply:
         history.pop()
-        print("✗ 沒拿到內容")
-        continue
+        raise RuntimeError("沒拿到內容")
 
-    print("AI >", reply)
     history.append({"role": "model", "parts": [{"text": reply}]})
+    return reply, hits
+
+
+if __name__ == "__main__":
+    history = []
+
+    while True:
+        user = input("\n你 > ").strip()
+        if user in ("exit", "quit", ""):
+            break
+
+        try:
+            reply, hits = ask(user, history)
+        except Exception as e:
+            print(f"✗ {e}")
+            continue
+
+        for d, s in hits:                                  # ← 看檢索品質
+            print(f"  ↳ {s:.3f}  {d[:30]}…")
+
+        print("AI >", reply)

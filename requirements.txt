@@ -2,6 +2,7 @@
 google-genai
 python-dotenv
 numpy
+streamlit
 
 # 地端版（llama.cpp + 本地 embedding）
 requests
