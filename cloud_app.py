@@ -19,11 +19,14 @@ for m in st.session_state.history:              # model → assistant 才畫得�
 if user := st.chat_input("說點什麼…"):
     st.chat_message("user").write(user)
 
+    err = None
     with st.spinner("思考中…"):
         try:
             reply, _ = bot.ask(user, st.session_state.history)   # ← 檢索 + 生成
         except Exception as e:
-            st.error(f"✗ {e}")
-            st.stop()
+            err = e                     # 先接住，離開 spinner 再顯示
 
-    st.chat_message("assistant").write(reply)
+    if err:                             # 在 spinner 裡 st.stop() 的話，轉圈會停不下來
+        st.error(f"✗ {err}")
+    else:
+        st.chat_message("assistant").write(reply)
