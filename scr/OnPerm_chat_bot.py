@@ -1,5 +1,5 @@
 import requests
-from rag import retrieve                                        # 1 檔案開頭
+from OnPerm_rag import retrieve                                        # 1 檔案開頭
 
 URL = "http://localhost:8080/v1/chat/completions"
 messages = [{"role": "system", "content": "你是友善的中文助理，回答簡潔。"}]
