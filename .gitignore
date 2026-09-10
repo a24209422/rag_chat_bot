@@ -1,6 +1,7 @@
 # 環境變數（含 API 金鑰，絕對不要提交）
 .env
 .env.local
+.streamlit/secrets.toml
 
 # Python
 __pycache__/

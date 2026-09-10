@@ -37,12 +37,19 @@ def embed(texts, task_type):
     return v
 
 
-DOC_VECS = embed(DOCS, "RETRIEVAL_DOCUMENT")        # 離線建索引
+_DOC_VECS = None            # import 時不打 API，第一次檢索才建索引
+
+
+def doc_vecs():
+    global _DOC_VECS
+    if _DOC_VECS is None:                           # 算過就重用
+        _DOC_VECS = embed(DOCS, "RETRIEVAL_DOCUMENT")   # ← 從 import 時搬到這裡
+    return _DOC_VECS
 
 
 def retrieve(question, k=2):
     qv = embed([question], "RETRIEVAL_QUERY")[0]    # 線上查詢
-    scores = DOC_VECS @ qv
+    scores = doc_vecs() @ qv
     top = np.argsort(-scores)[:k]
     return [(DOCS[i], float(scores[i])) for i in top]
 
