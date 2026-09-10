@@ -19,3 +19,5 @@ models/
 # 編輯器 / 作業系統
 .DS_Store
 Thumbs.db
+.tmp.drivedownload/
+.tmp.driveupload/
