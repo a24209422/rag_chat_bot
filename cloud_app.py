@@ -1,12 +1,20 @@
 # cloud_app.py（RAG 版介面：只管畫面，問答交給 cloud_chat_bot）
+import os
 import sys
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).parent / "scr"))   # 模組都在 scr/
-
 import streamlit as st
 from google.genai import errors
-import cloud_chat_bot as bot                    # ← 換掉直接打 API 的 requests
+
+sys.path.insert(0, str(Path(__file__).parent / "scr"))   # 模組都在 scr/
+
+try:                                     # 雲端有 secrets，本機通常沒有
+    if "GEMINI_API_KEY" in st.secrets:
+        os.environ.setdefault("GEMINI_API_KEY", st.secrets["GEMINI_API_KEY"])
+except Exception:                        # 本機沒有 secrets.toml 時不要炸
+    pass
+
+import cloud_chat_bot as bot             # noqa: E402 ← 必須在設好 key 之後
 
 st.title("💬 小聊天機器人（雲端版）")
 
