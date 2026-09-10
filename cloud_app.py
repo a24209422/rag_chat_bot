@@ -5,6 +5,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent / "scr"))   # 模組都在 scr/
 
 import streamlit as st
+from google.genai import errors
 import cloud_chat_bot as bot                    # ← 換掉直接打 API 的 requests
 
 st.title("💬 小聊天機器人（雲端版）")
@@ -27,6 +28,9 @@ if user := st.chat_input("說點什麼…"):
             err = e                     # 先接住，離開 spinner 再顯示
 
     if err:                             # 在 spinner 裡 st.stop() 的話，轉圈會停不下來
-        st.error(f"✗ {err}")
+        if isinstance(err, errors.APIError) and err.code == 503:
+            st.error("gemini暫時過載，請稍後再試。")
+        else:
+            st.error(f"✗ {err}")
     else:
         st.chat_message("assistant").write(reply)
