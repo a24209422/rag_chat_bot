@@ -18,12 +18,15 @@ import cloud_chat_bot as bot             # noqa: E402 ← 必須在設好 key �
 
 st.title("💬 小聊天機器人（雲端版）")
 
-if "history" not in st.session_state:
-    st.session_state.history = []               # 跟 CLI 同一份格式：role / parts
+st.session_state.setdefault("history", [])      # 跟 CLI 同一份格式：role / parts
+st.session_state.setdefault("sources", [])      # ← 與 history 等長；user 那格放 None
 
-for m in st.session_state.history:              # model → assistant 才畫得出來
-    role = "user" if m["role"] == "user" else "assistant"
-    st.chat_message(role).write(m["parts"][0]["text"])
+for m, src in zip(st.session_state.history, st.session_state.sources):
+    role = "user" if m["role"] == "user" else "assistant"   # model → assistant 才畫得出來
+    with st.chat_message(role):                 # 一格要放兩樣東西，所以用 with
+        st.write(m["parts"][0]["text"])
+        for d, s in (src or []):                # user 那格是 None，不能直接迭代
+            st.caption(f"`{s:.3f}` {d}")
 
 if user := st.chat_input("說點什麼…"):
     st.chat_message("user").write(user)
@@ -31,7 +34,7 @@ if user := st.chat_input("說點什麼…"):
     err = None
     with st.spinner("思考中…"):
         try:
-            reply, _ = bot.ask(user, st.session_state.history)   # ← 檢索 + 生成
+            reply, hits = bot.ask(user, st.session_state.history)   # ← 檢索 + 生成
         except Exception as e:
             err = e                     # 先接住，離開 spinner 再顯示
 
@@ -41,4 +44,8 @@ if user := st.chat_input("說點什麼…"):
         else:
             st.error(f"✗ {err}")
     else:
-        st.chat_message("assistant").write(reply)
+        st.session_state.sources += [None, hits]     # ← 只在「成功」這條路加
+        with st.chat_message("assistant"):
+            st.write(reply)
+            for d, s in hits:           # 這次的來源要自己畫，頂端迴圈還看不到它
+                st.caption(f"`{s:.3f}` {d}")
