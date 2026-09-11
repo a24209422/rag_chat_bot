@@ -64,7 +64,8 @@ if __name__ == "__main__":
             reply, _ = ask(user, history)
         except requests.exceptions.ConnectionError:
             print(f"✗ 連不上 {URL}")
-            print("  → llama.cpp server 沒開。WSL 裡跑：cd ~/rag-chatbot && make start_llama_server_cuda")
+            print("  → llama.cpp server 沒開。另開一個終端跑（詳見 README）：")
+            print("     llama-server.exe -m <模型>.gguf --port 8080 -c 4096 -ngl 99 --device Vulkan0")
             continue                # 回到迴圈開頭，不要整支程式死掉
         except requests.exceptions.Timeout:
             print("✗ 等超過 120 秒，模型可能還在載入，稍等再問")

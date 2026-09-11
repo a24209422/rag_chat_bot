@@ -10,7 +10,7 @@ RAG 拆成兩段：先用 embedding 從知識庫撈出最相關的段落，再�
 
 ```
 ├── cloud_app.py            Streamlit 介面（雲端版）
-├── onperm_app.py           Streamlit 介面（地端版）── 待新增
+├── onperm_app.py           Streamlit 介面（地端版）
 ├── shared/
 │   └── knowledge.py        DOCS + SYSTEM，兩邊唯一共用的東西
 ├── cloud/
@@ -74,7 +74,8 @@ llama-server.exe -m <模型路徑>.gguf --port 8080 -c 4096 -ngl 99 --device Vul
 
 ```bash
 python onperm/rag.py          # 只測檢索（不需要 server）
-python onperm/chat_bot.py     # 互動對話（需要 server）
+python onperm/chat_bot.py     # 互動對話（CLI，需要 server）
+streamlit run onperm_app.py   # 網頁介面（需要 server）
 ```
 
 第一次跑地端檢索會自動下載 e5-small 模型（約 470MB）。
