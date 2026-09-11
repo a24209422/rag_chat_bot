@@ -12,14 +12,30 @@ DOCS = [
 ]
 
 # ── 離線階段：把每段話算成向量（放到「意思的地圖」上）──
-embedder = SentenceTransformer("intfloat/multilingual-e5-small")
-DOC_VECS = embedder.encode(["passage: " + d for d in DOCS], normalize_embeddings=True)
+# import 時不載模型也不建索引，第一次檢索才做（比照雲端版 cloud_rag.py）
+_EMBEDDER = None
+_DOC_VECS = None
+
+
+def embedder():
+    global _EMBEDDER
+    if _EMBEDDER is None:                  # 第一次要下載模型，會慢一下
+        _EMBEDDER = SentenceTransformer("intfloat/multilingual-e5-small")
+    return _EMBEDDER
+
+
+def doc_vecs():
+    global _DOC_VECS
+    if _DOC_VECS is None:                  # 算過就重用
+        _DOC_VECS = embedder().encode(["passage: " + d for d in DOCS],
+                                      normalize_embeddings=True)
+    return _DOC_VECS
 
 
 # ── 線上階段：問題也算成向量，找地圖上最近的鄰居 ──
 def retrieve(question, k=2):
-    qv = embedder.encode(["query: " + question], normalize_embeddings=True)[0]
-    scores = DOC_VECS @ qv                 # 向量已正規化 → 內積就是餘弦相似度
+    qv = embedder().encode(["query: " + question], normalize_embeddings=True)[0]
+    scores = doc_vecs() @ qv               # 向量已正規化 → 內積就是餘弦相似度
     top = np.argsort(-scores)[:k]          # 由大到小排，取前 k 個
     return [(DOCS[i], float(scores[i])) for i in top]
 
