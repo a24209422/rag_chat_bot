@@ -24,20 +24,34 @@ def embedder():
     return _EMBEDDER
 
 
+# e5 是用 "query: " / "passage: " 前綴區分查詢與文件，Gemini 是用 task_type 參數。
+# 這裡把 task_type 映成前綴，函式形狀就跟 cloud_rag.embed 一樣 ——
+# probe_threshold.py 這類工具只要換 import 就能對地端重量一次門檻。
+_PREFIX = {"RETRIEVAL_QUERY": "query: ", "RETRIEVAL_DOCUMENT": "passage: "}
+
+
+def embed(texts, task_type):
+    prefix = _PREFIX[task_type]            # 打錯字就當場 KeyError，不要默默算出爛向量
+    return embedder().encode([prefix + t for t in texts],
+                             normalize_embeddings=True)
+
+
 def doc_vecs():
     global _DOC_VECS
     if _DOC_VECS is None:                  # 算過就重用
-        _DOC_VECS = embedder().encode(["passage: " + d for d in DOCS],
-                                      normalize_embeddings=True)
+        _DOC_VECS = embed(DOCS, "RETRIEVAL_DOCUMENT")
     return _DOC_VECS
 
 
 # ── 線上階段：問題也算成向量，找地圖上最近的鄰居 ──
-def retrieve(question, k=2):
-    qv = embedder().encode(["query: " + question], normalize_embeddings=True)[0]
+# 門檻 0.84 是對 e5 量出來的（probe_threshold.py）。不能抄雲端的 0.70 ——
+# e5 的分數整體偏高，連離題問題都有 0.79，0.70 在這裡等於沒有門檻。
+# 間隙只有 0.046 寬（雲端 0.128），DOCS 一改動就要重量。
+def retrieve(question, k=2, min_score=0.84):
+    qv = embed([question], "RETRIEVAL_QUERY")[0]
     scores = doc_vecs() @ qv               # 向量已正規化 → 內積就是餘弦相似度
     top = np.argsort(-scores)[:k]          # 由大到小排，取前 k 個
-    return [(DOCS[i], float(scores[i])) for i in top]
+    return [(DOCS[i], float(scores[i])) for i in top if scores[i] >= min_score]
 
 
 if __name__ == "__main__":
