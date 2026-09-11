@@ -1,17 +1,21 @@
-# OnPerm_chat_bot.py（RAG 版）
+# onperm/chat_bot.py（RAG 版對話）
+import sys
+from pathlib import Path
+
 import requests
-from OnPerm_rag import retrieve
+import rag                  # 同資料夾的 rag.py
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "shared"))
+from knowledge import SYSTEM   # noqa: E402 ← 兩邊共用，見 shared/knowledge.py
 
 URL = "http://localhost:8080/v1/chat/completions"
-SYSTEM = ("你是客服助理。只依據提供的【資料】回答，"     # ← 比照 cloud_chat_bot.py：
-          "資料沒提到的就說「資料裡沒有」。")           # 不講這句，模型會無視資料瞎掰
 
 
 def ask(user, history, k=2):
     """檢索 + 生成。history 會就地更新，回傳 (reply, hits)。
     沒有 usage：本機推論不計費，沒有配額可省，所以不像雲端版要數 token。
     失敗時丟例外，history 維持呼叫前的樣子。"""
-    hits = retrieve(user, k=k)                            # ← 先檢索
+    hits = rag.retrieve(user, k=k)                        # ← 先檢索
     if not hits and not history:      # ← 第一句就離題才短路；有上下文交給模型判斷
         reply = "資料裡沒有。"        # 措辭跟 SYSTEM 一致，兩條路說法才不會打架
         history.append({"role": "user", "content": user})

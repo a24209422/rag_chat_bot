@@ -1,9 +1,15 @@
-# cloud_chat_bot.py（RAG 版）
+# cloud/chat_bot.py（RAG 版對話）
 import os
+import sys
+from pathlib import Path
+
 from dotenv import load_dotenv
 from google import genai
 from google.genai import types
-import cloud_rag as rag                                   
+import rag                  # 同資料夾的 rag.py
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "shared"))
+from knowledge import SYSTEM   # noqa: E402 ← 兩邊共用，見 shared/knowledge.py
 
 load_dotenv()
 
@@ -12,8 +18,6 @@ if not KEY:
     raise RuntimeError("找不到 GEMINI_API_KEY：本機放 .env，雲端放 App settings → Secrets")
 client = genai.Client(api_key=KEY)
 MODEL = "gemini-flash-latest"
-SYSTEM = ("你是客服助理。只依據提供的【資料】回答，"     # ← 換成 RAG 版
-          "資料沒提到的就說「資料裡沒有」。")
 
 
 def ask(user, history, k=2):

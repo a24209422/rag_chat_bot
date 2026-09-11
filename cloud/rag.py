@@ -1,19 +1,17 @@
-# cloud_rag.py（Gemini 版）
+# cloud/rag.py（Gemini 版檢索）
 import os
+import sys
+from pathlib import Path
+
 import numpy as np
 from dotenv import load_dotenv
 from google import genai
 from google.genai import types
 
-load_dotenv()
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "shared"))
+from knowledge import DOCS   # noqa: E402 ← 兩邊共用，見 shared/knowledge.py
 
-DOCS = [
-    "退款流程：商品收到後 7 天內可申請退款，需保持包裝完整。",
-    "運費說明：訂單滿 1000 元免運，未滿加收 80 元。",
-    "客服時間：週一至週五 09:00-18:00，例假日不營業。",
-    "會員等級：累積消費滿 5000 元升級為金卡，享 95 折。",
-    "保固政策：電子產品保固一年，人為損壞不在範圍內。",
-]
+load_dotenv()
 
 KEY = os.environ.get("GEMINI_API_KEY")          # ← 不要用 os.environ[...]
 if not KEY:

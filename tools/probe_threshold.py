@@ -1,14 +1,25 @@
 # probe_threshold.py（量 retrieve 的 min_score 該設多少）
-#   用法：python scr/probe_threshold.py
+#   用法：python tools/probe_threshold.py cloud     ← 量雲端（會打 embedding API）
+#         python tools/probe_threshold.py onperm    ← 量地端（純本機，不花錢）
 #   換 embedding 模型或大幅增修 DOCS 之後要重跑——門檻不是通用常數。
 import sys
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).parent))
 sys.stdout.reconfigure(encoding="utf-8")      # Windows 主控台預設 cp950，中文會變亂碼
+sys.stderr.reconfigure(encoding="utf-8")      # 錯誤訊息也要，不然防呆的中文會變亂碼
+
+SIDE = sys.argv[1] if len(sys.argv) > 1 else "cloud"
+if SIDE not in ("cloud", "onperm"):
+    raise SystemExit("第一個參數要是 cloud 或 onperm，收到 %r" % SIDE)
+
+ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT / SIDE))          # ← 換邊只換這裡，兩邊的 rag.py 同名同形狀
+sys.path.insert(0, str(ROOT / "shared"))
 
 import numpy as np                            # noqa: E402
-import cloud_rag as rag                       # noqa: E402
+import rag                                    # noqa: E402 ← 解析到 cloud/ 或 onperm/
+
+print(f"量的是：{SIDE}")
 
 GROUPS = {
     "資料裡有的（應該答得出來）": [
@@ -24,7 +35,7 @@ GROUPS = {
     ],
 }
 
-D = rag.doc_vecs()                            # 建索引（會打一次 embedding API）
+D = rag.doc_vecs()                            # 建索引（雲端會打一次 API；地端本機算）
 tops = {}
 
 for name, questions in GROUPS.items():

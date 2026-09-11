@@ -1,18 +1,16 @@
-# mini_rag.py
+# onperm/rag.py（地端版檢索）
+import sys
+from pathlib import Path
+
 import numpy as np
 from sentence_transformers import SentenceTransformer
 
-# ── 你的「知識庫」。最簡單的形式就是一個 list，一段一句話 ──
-DOCS = [
-    "退款流程：商品收到後 7 天內可申請退款，需保持包裝完整。",
-    "運費說明：訂單滿 1000 元免運，未滿加收 80 元。",
-    "客服時間：週一至週五 09:00-18:00，例假日不營業。",
-    "會員等級：累積消費滿 5000 元升級為金卡，享 95 折。",
-    "保固政策：電子產品保固一年，人為損壞不在範圍內。",
-]
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "shared"))
+# 知識庫兩邊共用——同一批 DOCS 才比得出雲端與地端的差異
+from knowledge import DOCS   # noqa: E402
 
 # ── 離線階段：把每段話算成向量（放到「意思的地圖」上）──
-# import 時不載模型也不建索引，第一次檢索才做（比照雲端版 cloud_rag.py）
+# import 時不載模型也不建索引，第一次檢索才做（比照雲端版 cloud/rag.py）
 _EMBEDDER = None
 _DOC_VECS = None
 
@@ -25,7 +23,7 @@ def embedder():
 
 
 # e5 是用 "query: " / "passage: " 前綴區分查詢與文件，Gemini 是用 task_type 參數。
-# 這裡把 task_type 映成前綴，函式形狀就跟 cloud_rag.embed 一樣 ——
+# 這裡把 task_type 映成前綴，函式形狀就跟 cloud/rag.py 的 embed 一樣 ——
 # probe_threshold.py 這類工具只要換 import 就能對地端重量一次門檻。
 _PREFIX = {"RETRIEVAL_QUERY": "query: ", "RETRIEVAL_DOCUMENT": "passage: "}
 

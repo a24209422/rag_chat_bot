@@ -1,4 +1,4 @@
-# cloud_app.py（RAG 版介面：只管畫面，問答交給 cloud_chat_bot）
+# cloud_app.py（RAG 版介面：只管畫面，問答交給 cloud/chat_bot.py）
 import os
 import sys
 from pathlib import Path
@@ -6,7 +6,7 @@ from pathlib import Path
 import streamlit as st
 from google.genai import errors
 
-sys.path.insert(0, str(Path(__file__).parent / "scr"))   # 模組都在 scr/
+sys.path.insert(0, str(Path(__file__).parent / "cloud"))   # ← 換成 "onperm" 就是地端版
 
 try:                                     # 雲端有 secrets，本機通常沒有
     if "GEMINI_API_KEY" in st.secrets:
@@ -14,7 +14,7 @@ try:                                     # 雲端有 secrets，本機通常沒�
 except Exception:                        # 本機沒有 secrets.toml 時不要炸
     pass
 
-import cloud_chat_bot as bot             # noqa: E402 ← 必須在設好 key 之後
+import chat_bot as bot                   # noqa: E402 ← 必須在設好 key 之後
 
 st.title("💬 小聊天機器人（雲端版）")
 
