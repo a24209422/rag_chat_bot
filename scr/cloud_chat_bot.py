@@ -20,6 +20,12 @@ def ask(user, history, k=2):
     """檢索 + 生成。history 會就地更新，回傳 (reply, hits)。
     失敗時丟例外，history 維持呼叫前的樣子。"""
     hits = rag.retrieve(user, k=k)                        # ← 先檢索
+    if not hits and not history:      # ← 第一句就離題才短路；有上下文交給模型判斷
+        reply = "資料裡沒有。"        # 措辭跟 SYSTEM 一致，兩條路說法才不會打架
+        history.append({"role": "user",  "parts": [{"text": user}]})
+        history.append({"role": "model", "parts": [{"text": reply}]})
+        return reply, hits            # 省掉生成那通 API（檢索那通還是打了）
+
     context = "\n".join(f"[{i+1}] {d}" for i, (d, _) in enumerate(hits))
     prompt = f"【資料】\n{context}\n\n【問題】\n{user}"
 

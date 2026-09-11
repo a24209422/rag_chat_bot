@@ -47,11 +47,11 @@ def doc_vecs():
     return _DOC_VECS
 
 
-def retrieve(question, k=2):
+def retrieve(question, k=2, min_score=0.70):       # ← 門檻用量的，見 probe_threshold.py
     qv = embed([question], "RETRIEVAL_QUERY")[0]    # 線上查詢
     scores = doc_vecs() @ qv
     top = np.argsort(-scores)[:k]
-    return [(DOCS[i], float(scores[i])) for i in top]
+    return [(DOCS[i], float(scores[i])) for i in top if scores[i] >= min_score]
 
 
 if __name__ == "__main__":
