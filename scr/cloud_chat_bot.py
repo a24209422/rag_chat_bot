@@ -17,14 +17,15 @@ SYSTEM = ("你是客服助理。只依據提供的【資料】回答，"     # �
 
 
 def ask(user, history, k=2):
-    """檢索 + 生成。history 會就地更新，回傳 (reply, hits)。
+    """檢索 + 生成。history 會就地更新，回傳 (reply, hits, usage)。
+    usage 是這次生成用掉的 token；短路那條路沒打生成 API，所以是 0。
     失敗時丟例外，history 維持呼叫前的樣子。"""
     hits = rag.retrieve(user, k=k)                        # ← 先檢索
     if not hits and not history:      # ← 第一句就離題才短路；有上下文交給模型判斷
         reply = "資料裡沒有。"        # 措辭跟 SYSTEM 一致，兩條路說法才不會打架
         history.append({"role": "user",  "parts": [{"text": user}]})
         history.append({"role": "model", "parts": [{"text": reply}]})
-        return reply, hits            # 省掉生成那通 API（檢索那通還是打了）
+        return reply, hits, {"in": 0, "out": 0}   # 省掉生成那通 API（檢索那通還是打了）
 
     context = "\n".join(f"[{i+1}] {d}" for i, (d, _) in enumerate(hits))
     prompt = f"【資料】\n{context}\n\n【問題】\n{user}"
@@ -52,8 +53,15 @@ def ask(user, history, k=2):
         history.pop()
         raise RuntimeError("沒拿到內容")
 
+    u = resp.usage_metadata                   # 每個欄位都是 Optional[int]，可能是 None
+    usage = {
+        "in": u.prompt_token_count or 0,
+        # thoughts 是使用者看不到的內部草稿，但按輸出計費——不加會嚴重低估
+        "out": (u.candidates_token_count or 0) + (u.thoughts_token_count or 0),
+    }
+
     history.append({"role": "model", "parts": [{"text": reply}]})
-    return reply, hits
+    return reply, hits, usage
 
 
 if __name__ == "__main__":
@@ -65,12 +73,13 @@ if __name__ == "__main__":
             break
 
         try:
-            reply, hits = ask(user, history)
+            reply, hits, usage = ask(user, history)
         except Exception as e:
             print(f"✗ {e}")
             continue
 
         for d, s in hits:                                  # ← 看檢索品質
             print(f"  ↳ {s:.3f}  {d[:30]}…")
+        print(f"  [token] 入 {usage['in']}  出 {usage['out']}（含思考）")
 
         print("AI >", reply)
