@@ -25,3 +25,6 @@ data/vecs_*.npz
 Thumbs.db
 .tmp.drivedownload/
 .tmp.driveupload/
+
+# 個人開發筆記，留在本機不進版控（已從 git 歷史中移除）
+地端改動.md
