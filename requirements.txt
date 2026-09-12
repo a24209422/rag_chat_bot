@@ -8,6 +8,10 @@
 # 設定（shared/settings.py 用它讀 .env 並做型別轉換）
 pydantic-settings==2.15.0
 
+# 後端 API
+fastapi==0.141.1
+uvicorn==0.52.4
+
 # 雲端版（Gemini）
 google-genai==2.22.0
 numpy==2.5.2

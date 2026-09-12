@@ -30,6 +30,11 @@ ignore = [
     "UP031",
 ]
 
+[tool.ruff.lint.flake8-bugbear]
+# B008 的用意是擋「可變的預設值」。Usage 是 frozen dataclass，當預設值本來就
+# 安全——列在這裡比每次都拉一個模組層常數繞過去誠實。
+extend-immutable-calls = ["shared.llm.Usage"]
+
 [tool.ruff.lint.isort]
 # 讓 ruff 知道這幾個是本專案的模組，才不會把它們當成第三方套件排在一起
 known-first-party = ["shared", "cloud", "onperm", "tools", "providers"]

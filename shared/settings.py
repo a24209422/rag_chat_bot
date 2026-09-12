@@ -52,9 +52,23 @@ class Settings(BaseSettings):
     cloud_history_limit: int | None = None
     onperm_history_limit: int | None = 11
 
+    # ── API ──────────────────────────────────────────────────────────
+    # Streamlit 與 CLI 都是打這個位址，不再直接 import ChatBot。
+    api_url: str = "http://localhost:8000"
+    api_timeout: int = 180        # 地端生成可能很慢，要比 llama_timeout 寬
+
+    # 啟動時要先建好索引的邊，逗號分隔（例如 "cloud" 或 "cloud,onperm"）。
+    # 預設空的＝全部延遲到第一次請求。用逗號字串而不是 list 型別，是因為
+    # pydantic-settings 的 list 預設要求 JSON 格式（API_WARM=["cloud"]），
+    # 在 .env 裡寫起來很彆扭。
+    api_warm: str = ""
+
     # ── 路徑 ─────────────────────────────────────────────────────────
     jobs_path: Path = ROOT / "data" / "jobs.json"
     vecs_cache_path: Path = ROOT / "data" / "vecs_cloud.npz"
+
+    def warm_sides(self):
+        return [s.strip() for s in self.api_warm.split(",") if s.strip()]
 
 
 @lru_cache(maxsize=1)

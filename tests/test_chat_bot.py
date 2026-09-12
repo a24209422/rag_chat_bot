@@ -10,13 +10,9 @@ from shared.chat_bot import NOT_FOUND, ChatBot
 from shared.knowledge import SYSTEM, Doc
 from shared.llm import BaseLLM, Reply, Usage
 
-# Usage 是 frozen dataclass，當預設值本來就安全，但拉成模組層常數
-# 才不用每次都跟 ruff 的 B008 解釋一遍。
-DEFAULT_USAGE = Usage(10, 5)
-
 
 class FakeLLM(BaseLLM):
-    def __init__(self, text="模型的回答", usage=DEFAULT_USAGE, error=None):
+    def __init__(self, text="模型的回答", usage=Usage(10, 5), error=None):
         self.text, self.usage, self.error = text, usage, error
         self.calls = []
 

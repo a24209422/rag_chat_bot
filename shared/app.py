@@ -1,28 +1,27 @@
 # app.py（Streamlit 介面：兩邊共用一份）
 #
-#   在 history 統一成中性格式、ask() 統一回傳 (reply, hits, usage) 之前，
-#   兩支 app 各有一份幾乎一樣的畫面邏輯，差在 role 怎麼轉、要不要畫 token。
-#   現在差異只剩「標題」和「哪一邊」，所以 cloud_app.py / onperm_app.py
-#   各自只剩幾行——它們仍然是兩個獨立的進入點（streamlit run 要指定檔案）。
+#   這一層只管畫面。問答走 HTTP 打後端，不再直接 import ChatBot——
+#   所以後端可以換機器、可以重啟、可以同時被別的客戶端用，UI 不用知道。
+#   history 由這裡保管（st.session_state），後端完全無狀態：
+#   併發使用者永遠不會看到彼此的對話。
 import streamlit as st
 
-import providers
+from shared.api_client import ApiClient, ApiError
 from shared.llm import Usage
 
 
+@st.cache_resource
+def get_client():
+    """建一次就好——Streamlit 每次互動都會從頭重跑整支腳本。
+
+    （以前這裡快取的是整個 ChatBot，因為索引跟著它。現在索引在後端，
+    這裡只剩一個很輕的 HTTP 客戶端，快取只是順手。）
+    """
+    return ApiClient()
+
+
 def run(side, title):
-    @st.cache_resource(show_spinner="準備中…")
-    def get_bot(side):
-        """建一次就好。
-
-        Streamlit 每次互動都會從頭重跑整支腳本，沒有這個 decorator 的話，
-        每問一句就會重建 Retriever——索引跟著重算（雲端是 140 個 API request，
-        地端是重載 e5）。以前靠模組層全域「順便」達到這個效果，現在狀態在
-        實例上，就得明確講出快取的範圍。
-        """
-        return providers.chat_for(side)
-
-    bot = get_bot(side)
+    client = get_client()
 
     st.title(title)
 
@@ -35,8 +34,8 @@ def run(side, title):
     for m, src in zip(st.session_state.history, st.session_state.sources, strict=True):
         with st.chat_message(m["role"]):         # 中性格式的 role 直接就能畫
             st.write(m["content"])
-            for d, s in (src or []):             # user 那格是 None，不能直接迭代
-                st.caption(f"`{s:.3f}` {d.label}")
+            for s in (src or []):                # user 那格是 None，不能直接迭代
+                st.caption(f"`{s['score']:.3f}` {s['label']}")
 
     if user := st.chat_input("說點什麼…"):
         st.chat_message("user").write(user)
@@ -44,25 +43,26 @@ def run(side, title):
         err = None
         with st.spinner("思考中…"):
             try:
-                reply, hits, used = bot.ask(user, st.session_state.history)
-            except Exception as e:
+                ans = client.ask(side, user, st.session_state.history)
+            except ApiError as e:
                 err = e                 # 先接住，離開 spinner 再顯示
 
         if err:                         # 在 spinner 裡 st.stop() 的話，轉圈會停不下來
-            st.error(bot.llm.explain(err) or f"✗ {err}")
+            st.error(f"✗ {err}")        # 訊息在後端就翻成人話了，直接顯示
         else:
-            st.session_state.sources += [None, hits]     # ← 只在「成功」這條路加
-            st.session_state.usage += used
+            # 後端回的 history 才是權威版本——它可能就地截短過（地端有上限）。
+            st.session_state.history = ans.history
+            st.session_state.sources += [None, ans.sources]
+            st.session_state.usage += ans.usage
             with st.chat_message("assistant"):
-                st.write(reply)
-                for d, s in hits:       # 這次的來源要自己畫，頂端迴圈還看不到它
-                    st.caption(f"`{s:.3f}` {d.label}")
+                st.write(ans.reply)
+                for s in ans.sources:   # 這次的來源要自己畫，頂端迴圈還看不到它
+                    st.caption(f"`{s['score']:.3f}` {s['label']}")
 
-        # ask() 可能就地截短 history（地端有上限，雲端沒有）。sources 不跟著切的話，
-        # 下一輪的 zip(strict=True) 會直接炸。兩者都是一次 append 兩則、history 只從
-        # 前面砍，所以取相同長度的尾段就對齊了。
-        n = len(st.session_state.history)
-        st.session_state.sources = st.session_state.sources[-n:] if n else []
+            # history 被截短時 sources 要跟著切，不然下一輪的 zip(strict=True) 會炸。
+            # 兩者都是一次 append 兩則、history 只從前面砍，取相同長度的尾段就對齊了。
+            n = len(st.session_state.history)
+            st.session_state.sources = st.session_state.sources[-n:] if n else []
 
     # 擺在最後才畫，這樣數字包含剛才那一輪（sidebar 位置跟程式順序無關）
     st.sidebar.metric("輸入 token", st.session_state.usage.prompt)

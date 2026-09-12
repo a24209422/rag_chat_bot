@@ -4,3 +4,8 @@
 pytest==9.1.1
 ruff==0.16.7
 pre-commit==4.6.2
+
+# FastAPI 的 TestClient 要的。httpx2 是 starlette 現在建議的版本——
+# 只裝 httpx 的話每次跑測試都會噴一行棄用警告。
+httpx==0.28.1
+httpx2==2.12.0

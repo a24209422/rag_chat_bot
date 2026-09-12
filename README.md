@@ -13,6 +13,10 @@ RAG 拆成兩段：先用 embedding 從知識庫撈出最相關的段落，再�
 
 ```
 ├── providers.py            retriever_for() / llm_for() / chat_for()：依名稱組零件
+├── api/                    ← FastAPI 後端
+│   ├── main.py             GET /health、POST /chat
+│   ├── schemas.py          請求與回應的形狀（pydantic）
+│   └── deps.py             side → ChatBot，第一次用到才建
 ├── cloud_app.py            雲端版進入點（幾行，畫面在 shared/app.py）
 ├── onperm_app.py           地端版進入點
 ├── data/
@@ -24,6 +28,7 @@ RAG 拆成兩段：先用 embedding 從知識庫撈出最相關的段落，再�
 │   ├── retriever.py        BaseRetriever：檢索邏輯，子類只補 embed()
 │   ├── llm.py              BaseLLM：跟模型講話的介面，子類補線路格式
 │   ├── chat_bot.py         ChatBot：檢索 + 生成的唯一一份實作
+│   ├── api_client.py       打後端 API 的客戶端（Streamlit 與 CLI 用）
 │   └── app.py              Streamlit 畫面的唯一一份實作
 ├── cloud/                  ← 只剩「Gemini 特有的事」
 │   ├── client.py           Gemini client 的唯一建構點（讀金鑰只有這一處）
@@ -119,8 +124,9 @@ python -m tools.build_jobs "<職缺 PDF 資料夾>"
 
 ```bash
 python -m cloud.rag             # 只測檢索
-python -m tools.chat cloud      # 互動對話（CLI）
-streamlit run cloud_app.py      # 網頁介面
+python -m tools.chat cloud      # 互動對話（CLI，直接呼叫，不需要後端）
+uvicorn api.main:app --reload   # 後端 API
+streamlit run cloud_app.py      # 網頁介面（另開一個終端，需要後端）
 ```
 
 免費方案有用量上限（觀測到每天約 20 次生成），超過會收到 429。
@@ -147,8 +153,9 @@ llama-server.exe -m <模型路徑>.gguf --port 8080 -c 8192 -ngl 99 --device Vul
 
 ```bash
 python -m onperm.rag            # 只測檢索（不需要 server）
-python -m tools.chat onperm     # 互動對話（CLI，需要 server）
-streamlit run onperm_app.py     # 網頁介面（需要 server）
+python -m tools.chat onperm     # 互動對話（CLI，直接呼叫，不需要後端）
+uvicorn api.main:app --reload   # 後端 API
+streamlit run onperm_app.py     # 網頁介面（另開一個終端，需要後端）
 ```
 
 第一次跑地端檢索會自動下載 e5-small 模型（約 470MB）。
@@ -261,10 +268,73 @@ python -m tools.probe_threshold cloud     # 會打 embedding API
 
 地端不需要快取：e5 在本機跑，重算只是慢十秒，不燒任何配額。
 
+## 後端 API
+
+問答邏輯包成了 HTTP 服務，Streamlit 改成打它。好處是實質的：後端可以獨立
+測試、可以被別的東西呼叫（`curl`、之後的 React、別的服務）、可以部署在另一台
+機器；UI 掛掉也不會拖垮索引。
+
+```bash
+uvicorn api.main:app --reload      # 後端，聽 http://localhost:8000
+streamlit run cloud_app.py         # 另開一個終端
+```
+
+互動式 API 文件在 <http://localhost:8000/docs>（FastAPI 從 `api/schemas.py` 自動生成）。
+
+| 方法 | 路徑 | 說明 |
+|---|---|---|
+| GET | `/health` | 健康檢查，附帶「哪幾邊已經建好索引」 |
+| POST | `/chat` | 檢索 + 生成。`side` 選 `cloud` 或 `onperm` |
+
+```bash
+curl -X POST http://localhost:8000/chat -H "Content-Type: application/json"      -d '{"question":"...","side":"onperm"}'
+```
+
+回應長這樣：
+
+```json
+{
+  "reply": "資料中有以下無人機相關的職缺…",
+  "sources": [{"code": "MAT-04", "label": "MAT-04 · 神耀科技 · 無人機硬體工程師 · 臺北市內湖區", "score": 0.906}],
+  "usage": {"prompt": 2764, "output": 78},
+  "history": [{"role": "user", "content": "…"}, {"role": "assistant", "content": "…"}]
+}
+```
+
+`code` 是獨立欄位而不是埋在 `reply` 的散文裡——[完整的清單由程式給，不是模型](#完整的清單由程式給不是模型)。
+
+### 後端不記 history
+
+`history` 由呼叫端帶進來、原樣帶回去，伺服器什麼都不存。
+
+這不是偷懶。把對話歷史做成模組層單例的話，整個 process 共用一份——**兩個
+使用者會看到彼此的對話，任一人清空就清掉所有人的**。綁在連線上可以解決，
+但 REST 這層根本不需要連線的概念，交給呼叫端保管最單純：併發永遠不會互相
+污染、伺服器可以隨時重啟、也能水平擴充。Streamlit 那側本來就把 history 放在
+`st.session_state`，剛好對得上。
+
+### 錯誤碼
+
+`llm.explain()` 認得的都是「上游的可預期狀況」，翻成 429／503；500 留給
+「我們自己壞了」——不然呼叫端沒辦法判斷該不該重試。
+
+| 狀況 | 狀態碼 |
+|---|---|
+| 參數不合法（空問題、`side` 不存在、`k` 超出範圍） | 422 |
+| Gemini 配額用完 | 429 |
+| Gemini 過載、llama.cpp server 沒開或逾時、某一邊起不來 | 503 |
+| 其他 | 500 |
+
+### 索引什麼時候建
+
+預設是「第一次用到那一邊才建」——只用雲端的人不該在啟動時等地端載 e5。
+要預熱就設 `API_WARM=cloud` 或 `API_WARM=cloud,onperm`，`/health` 的
+`loaded` 看得出有沒有生效。
+
 ## 測試與 lint
 
 ```bash
-python -m pytest          # 122 個測試，約 2 秒
+python -m pytest          # 150 個測試，約 3 秒
 python -m ruff check .    # lint
 pre-commit install        # 裝一次，之後每次 commit 自動跑上面兩項
 ```
@@ -279,6 +349,8 @@ pre-commit install        # 裝一次，之後每次 commit 自動跑上面兩�
 | `test_chat_bot.py` | 編排：prompt 組裝、history 回滾、短路 | 假的 `BaseLLM` 子類 |
 | `test_llm.py` | 各家的線路格式轉換、`usage`、錯誤翻譯 | 假 client／換掉 `requests.post` |
 | `test_settings.py` | 預設值、環境變數覆寫、型別轉換 | `_env_file=None` 不讀本機 `.env` |
+| `test_api.py` | 端點：驗證、`Doc`→`Source`、例外翻成狀態碼、無狀態 | `dependency_overrides` 換掉整個 bot |
+| `test_api_client.py` | 客戶端：請求形狀、錯誤訊息可不可讀 | 換掉 `requests.request` |
 | `test_knowledge.py` | `Doc` 預設值、`import` 不讀檔 | — |
 | `test_corpus.py` | 對真實 `jobs.json` 的筆數回歸 | 過濾是 facet 決定的，不需要算向量 |
 
