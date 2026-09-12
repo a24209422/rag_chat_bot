@@ -1,21 +1,21 @@
 # cloud/client.py（Gemini client 的唯一建構點）
 #
-#   rag.py 與 chat_bot.py 都要一個 client。放在這裡是為了讓「讀金鑰」這件事
-#   只有一處——而且是在「呼叫時」才做，不是 import 時。
-#   模組層 client = genai.Client(...) 的問題：沒有金鑰就連 import 都會炸，
-#   於是測試跑不了、CI 跑不了、想同時載入地端那側也會被這行擋住。
-import os
-
-from dotenv import load_dotenv
+#   rag.py 與 llm.py 都要一個 client。放在這裡是為了讓「讀金鑰」只有一處，
+#   而且是在「呼叫時」才做，不是 import 時——模組層 genai.Client(...) 的問題是
+#   沒有金鑰連 import 都會炸，於是測試跑不了、也載不進地端那側。
 from google import genai
 
+from shared.settings import settings
 
-def make_client(api_key=None):
+
+def make_client(api_key=None, config=None):
+    """金鑰來源見 shared/settings.py：建構參數 > 環境變數 > .env。
+
+    ⚠ settings() 有快取。Streamlit Cloud 那條路是把 secrets 塞進環境變數，
+      所以那件事必須發生在第一次呼叫 settings() 之前（cloud_app.py 開頭就做）。
+    """
     if api_key is None:
-        load_dotenv()
-        # ← 不要用 os.environ[...]：那樣拿不到就是 KeyError，
-        #   訊息只有一個變數名，看不出該去哪裡設定
-        api_key = os.environ.get("GEMINI_API_KEY")
+        api_key = (config or settings()).gemini_api_key
     if not api_key:
         raise RuntimeError(
             "找不到 GEMINI_API_KEY：本機放 .env，雲端放 App settings → Secrets")

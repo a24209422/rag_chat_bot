@@ -12,25 +12,30 @@ RAG 拆成兩段：先用 embedding 從知識庫撈出最相關的段落，再�
 繼承保證的，不是靠約定；換邊只要換 `providers.chat_for()` 的參數：
 
 ```
-├── providers.py            retriever_for() / chat_for()：依名稱取得某一邊的實作
-├── cloud_app.py            Streamlit 介面（雲端版）
-├── onperm_app.py           Streamlit 介面（地端版）
+├── providers.py            retriever_for() / llm_for() / chat_for()：依名稱組零件
+├── cloud_app.py            雲端版進入點（幾行，畫面在 shared/app.py）
+├── onperm_app.py           地端版進入點
 ├── data/
 │   └── jobs.json           知識庫（由 tools.build_jobs 產生）
-├── shared/
-│   ├── knowledge.py        Doc 結構 + load_docs() + SYSTEM，兩邊共用
-│   ├── retriever.py        BaseRetriever：共用的檢索邏輯，子類只補 embed()
-│   └── facets.py           把自由文字的 metadata 正規化成可精確比對的分類
-├── cloud/
+├── shared/                 ← 兩邊共用的，全部在這裡
+│   ├── settings.py         所有會因環境而異的設定（讀 .env）
+│   ├── knowledge.py        Doc 結構 + load_docs() + SYSTEM
+│   ├── facets.py           把自由文字的 metadata 正規化成可精確比對的分類
+│   ├── retriever.py        BaseRetriever：檢索邏輯，子類只補 embed()
+│   ├── llm.py              BaseLLM：跟模型講話的介面，子類補線路格式
+│   ├── chat_bot.py         ChatBot：檢索 + 生成的唯一一份實作
+│   └── app.py              Streamlit 畫面的唯一一份實作
+├── cloud/                  ← 只剩「Gemini 特有的事」
 │   ├── client.py           Gemini client 的唯一建構點（讀金鑰只有這一處）
 │   ├── rag.py              CloudRetriever：gemini-embedding-001，維度截短成 768
-│   └── chat_bot.py         CloudChatBot：gemini-flash-latest，多輪記憶與 token 計量
-├── onperm/
+│   └── llm.py              GeminiLLM：contents/parts 格式、思考 token、錯誤翻譯
+├── onperm/                 ← 只剩「llama.cpp 特有的事」
 │   ├── rag.py              OnpremRetriever：intfloat/multilingual-e5-small
-│   └── chat_bot.py         OnpremChatBot：走 llama.cpp server 的 OpenAI 相容 API
+│   └── llm.py              LlamaCppLLM：OpenAI 相容格式、usage、錯誤翻譯
 └── tools/
     ├── build_jobs.py       職缺 PDF → data/jobs.json
-    └── probe_threshold.py  量 retrieve 的 min_score 該設多少
+    ├── probe_threshold.py  量 retrieve 的 min_score 該設多少
+    └── chat.py             互動式對話（CLI，兩邊共用）
 ```
 
 ### Doc 的兩個長度上限
@@ -44,11 +49,35 @@ RAG 拆成兩段：先用 embedding 從知識庫撈出最相關的段落，再�
 
 所以一個職缺會被切成好幾塊各自 embed，但撈到任一塊都餵完整職缺。以整份職缺去 embed 的話，30 個裡有 13 個（42%）超過 512、最長的 1504 token。
 
-### 看起來像、但不能合併的地方
+### 「不能合併」是錯的，後來推翻了
 
-`ask()` 雲端回傳 `(reply, hits, usage)`、地端只有 `(reply, hits)`（本機推論不計費）；history 格式一邊是 Gemini 的 `parts`/`model`、一邊是 OpenAI 的 `content`/`assistant`；地端會截短 history 防爆 context，雲端不用。
+這個專案曾經有 `CloudChatBot` 和 `OnpremChatBot` 兩份幾乎一樣的實作，README 上寫著「刻意不合併」，理由有兩個：
 
-所以 `CloudChatBot` 和 `OnpremChatBot` 刻意沒有共同的 base class——硬合併只會換來一堆 `if side == ...`。反過來說 `retrieve()` 兩邊本來就逐字相同，那個才該合併，現在收在 `shared/retriever.py`，雲地差異縮到只剩 `embed()`、`min_score`、要不要快取索引三樣。
+1. history 格式不同（Gemini 的 `parts`/`model` vs OpenAI 的 `content`/`assistant`）
+2. `ask()` 回傳不同——「地端本機推論不計費，所以沒有 usage」
+
+兩個理由後來都不成立：
+
+1. **那是線路格式，屬於傳輸層。** 讓它決定上層架構是搞錯分層——把轉換收進各自的 LLM client，上層只認一種中性格式就好。
+2. **「不計費」不等於「量不到」。** llama.cpp 的 `/v1/chat/completions` 實測會回 `prompt_tokens` 與 `completion_tokens`。而且地端**更需要**這個數字：它告訴你離 `-c` 的上限還有多遠（開 `-c 4096` 撈五個職缺會直接回 400，就是這個坑）。
+
+所以現在 `ChatBot` 只有一份，兩邊的 `ask()` 都回 `(reply, hits, usage)`。差異縮到三個可替換的零件：
+
+| 零件 | 雲端 | 地端 |
+|------|------|------|
+| `Retriever` | Gemini embedding，`min_score=0.65` | e5-small，`min_score=0.82` |
+| `LLM` | `contents`/`parts`、思考 token | OpenAI 相容、`usage` 欄位 |
+| history 上限 | 不砍（context 寬裕） | 11 則 |
+
+連 Streamlit 畫面也收成一份了（`shared/app.py`），因為 history 統一之後兩支 app 只差標題。
+
+錯誤訊息的翻譯也歸各自的 LLM client：`explain(exc)` 把「這家可以預期會發生的錯」翻成人話（Gemini 的 503/429、llama.cpp 的連不上/逾時），不認得就回 `None`。UI 只要寫 `llm.explain(e) or str(e)`——429 對 Gemini 是配額，對別家可能是別的意思，那是 provider 的知識。
+
+### 設定集中在一處
+
+模型名、server 位址、逾時、溫度、`k`、history 上限，全部在 `shared/settings.py`（pydantic-settings，讀 `.env`），可用環境變數覆寫。可改的項目見 `.env.example`。
+
+> ⚠ **`min_score` 刻意不在設定裡。** 它不是旋鈕，是 `tools/probe_threshold.py` 對「這個 embedding 模型 ＋ 這批語料」量出來的結果，換任一邊都要重量。放進 `.env` 會讓它看起來像可以隨手調的參數，那正是最危險的誤解。要臨時試別的值就傳建構子參數：`retriever_for("cloud", min_score=0.7)`。
 
 ### 狀態都掛在實例上，沒有模組層全域
 
@@ -89,9 +118,9 @@ python -m tools.build_jobs "<職缺 PDF 資料夾>"
 3. 執行：
 
 ```bash
-python -m cloud.rag           # 只測檢索
-python -m cloud.chat_bot      # 互動對話（CLI）
-streamlit run cloud_app.py    # 網頁介面
+python -m cloud.rag             # 只測檢索
+python -m tools.chat cloud      # 互動對話（CLI）
+streamlit run cloud_app.py      # 網頁介面
 ```
 
 免費方案有用量上限（觀測到每天約 20 次生成），超過會收到 429。
@@ -117,9 +146,9 @@ llama-server.exe -m <模型路徑>.gguf --port 8080 -c 8192 -ngl 99 --device Vul
 4. 另開一個終端執行：
 
 ```bash
-python -m onperm.rag          # 只測檢索（不需要 server）
-python -m onperm.chat_bot     # 互動對話（CLI，需要 server）
-streamlit run onperm_app.py   # 網頁介面（需要 server）
+python -m onperm.rag            # 只測檢索（不需要 server）
+python -m tools.chat onperm     # 互動對話（CLI，需要 server）
+streamlit run onperm_app.py     # 網頁介面（需要 server）
 ```
 
 第一次跑地端檢索會自動下載 e5-small 模型（約 470MB）。
@@ -235,7 +264,7 @@ python -m tools.probe_threshold cloud     # 會打 embedding API
 ## 測試與 lint
 
 ```bash
-python -m pytest          # 99 個測試，約 1.4 秒
+python -m pytest          # 122 個測試，約 2 秒
 python -m ruff check .    # lint
 pre-commit install        # 裝一次，之後每次 commit 自動跑上面兩項
 ```
@@ -247,9 +276,14 @@ pre-commit install        # 裝一次，之後每次 commit 自動跑上面兩�
 | `test_facets.py` | 正規化與查詢條件抽取 | 純函式，本來就沒有依賴 |
 | `test_build_jobs.py` | PDF 文字清理、切塊、欄位解析 | 假的 PDF 物件 |
 | `test_retriever.py` | 檢索邏輯：去重、門檻、過濾放寬 | 分數由字典指定的假檢索器 |
-| `test_chat_bot.py` | prompt 組裝、history 回滾、token 計量 | 換掉 `requests.post` 與 Gemini client |
+| `test_chat_bot.py` | 編排：prompt 組裝、history 回滾、短路 | 假的 `BaseLLM` 子類 |
+| `test_llm.py` | 各家的線路格式轉換、`usage`、錯誤翻譯 | 假 client／換掉 `requests.post` |
+| `test_settings.py` | 預設值、環境變數覆寫、型別轉換 | `_env_file=None` 不讀本機 `.env` |
 | `test_knowledge.py` | `Doc` 預設值、`import` 不讀檔 | — |
 | `test_corpus.py` | 對真實 `jobs.json` 的筆數回歸 | 過濾是 facet 決定的，不需要算向量 |
+
+`test_chat_bot.py` 與 `test_llm.py` 的分工就是 Stage 2 的成果：編排邏輯只有一份、
+測一次；線路格式的差異各自關在自己的 provider 測試裡。以前這些要寫兩遍。
 
 `test_retriever.py` 是 Stage 0 的直接成果——在那之前 `DOCS` 和索引都是模組層全域，
 沒辦法塞一批自己的資料進去，這些測試寫不出來。

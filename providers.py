@@ -1,11 +1,18 @@
-# providers.py（依名稱取得雲端或地端的實作）
+# providers.py（依名稱組出某一邊的零件）
 #
 #   取代原本的 sys.path.insert(ROOT / side) 切換。那個做法有個藏得很深的問題：
 #   cloud/rag.py 與 onperm/rag.py 都叫 rag，兩邊都不是 package，所以 import rag
 #   的結果由 sys.path 順序決定，而且會被 sys.modules 快取——同一個 process 裡
 #   「只能」載入其中一邊，第二次 import 會靜默拿到第一邊的模組，不報錯。
-#   Streamlit 一次只跑一支所以碰不到，但測試、後端服務、任何要並排比較兩邊的
-#   工具都會撞上。改成正式 package + 這個工廠之後，兩邊可以同時存在。
+#
+#   現在兩邊的差異只剩三個零件：
+#       Retriever  怎麼算向量、min_score 是多少
+#       LLM        怎麼跟模型講話、usage 怎麼讀
+#       history 上限   地端要砍（context 小），雲端不砍
+#   ChatBot 本身只有一份（shared/chat_bot.py）。加第三家就是多一個 LLM 子類。
+from shared.chat_bot import ChatBot
+from shared.settings import settings
+
 SIDES = ("cloud", "onperm")
 
 
@@ -15,9 +22,9 @@ def _check(side):
 
 
 def retriever_for(side, **kw):
-    """建一個 Retriever。kw 直接轉給建構子（docs、min_score…）。
+    """建一個 Retriever。kw 直接轉給建構子（docs、min_score、config…）。
 
-    import 刻意放在函式裡：載入地端會連帶拉進 sentence_transformers（好幾秒），
+    import 刻意放在函式裡：載入地端會連帶拉進 sentence_transformers，
     只想用雲端的人不該付這個成本。
     """
     _check(side)
@@ -28,18 +35,25 @@ def retriever_for(side, **kw):
     return OnpremRetriever(**kw)
 
 
-def chat_for(side, **kw):
-    """建一個 ChatBot。不傳 retriever 的話，建構子會自己建一個對應的。
-
-    ⚠ 兩邊的 ask() 形狀不同，這是刻意的，不要包一層統一介面把它藏起來：
-        cloud  → (reply, hits, usage)   history 格式 parts / model
-        onperm → (reply, hits)          history 格式 content / assistant
-    呼叫端本來就得知道自己在用哪一邊（UI 要畫 token 用量、要轉 role），
-    假裝一樣只會讓差異在更遠的地方以更難懂的形式冒出來。
-    """
+def llm_for(side, **kw):
+    """建一個 LLM client。"""
     _check(side)
     if side == "cloud":
-        from cloud.chat_bot import CloudChatBot
-        return CloudChatBot(**kw)
-    from onperm.chat_bot import OnpremChatBot
-    return OnpremChatBot(**kw)
+        from cloud.llm import GeminiLLM
+        return GeminiLLM(**kw)
+    from onperm.llm import LlamaCppLLM
+    return LlamaCppLLM(**kw)
+
+
+def chat_for(side, config=None, retriever=None, llm=None, **kw):
+    """組出一個 ChatBot。兩邊回傳的形狀完全一樣：ask() → (reply, hits, usage)。"""
+    _check(side)
+    cfg = config or settings()
+    limit = cfg.cloud_history_limit if side == "cloud" else cfg.onperm_history_limit
+    return ChatBot(
+        retriever=retriever if retriever is not None else retriever_for(side, config=cfg),
+        llm=llm if llm is not None else llm_for(side, config=cfg),
+        history_limit=kw.pop("history_limit", limit),
+        config=cfg,
+        **kw,
+    )

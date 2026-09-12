@@ -9,9 +9,8 @@
 import json
 from dataclasses import dataclass, field
 from functools import lru_cache
-from pathlib import Path
 
-JOBS = Path(__file__).resolve().parent.parent / "data" / "jobs.json"
+from shared.settings import settings
 
 
 @dataclass
@@ -43,8 +42,10 @@ class Doc:
             self.group = self.id
 
 
-def load_docs(path=JOBS):
+def load_docs(path=None):
     """讀 jobs.json。純函式，每次呼叫都重讀——測試要塞自己的知識庫就用這個。"""
+    if path is None:
+        path = settings().jobs_path
     if not path.exists():
         raise FileNotFoundError(
             f"找不到 {path}。先跑：\n"

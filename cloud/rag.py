@@ -3,22 +3,17 @@ import hashlib
 import re
 import sys
 import time
-from pathlib import Path
 
 import numpy as np
 from google.genai import errors, types
 
 from cloud.client import make_client
 from shared.retriever import BaseRetriever
-
-MODEL = "gemini-embedding-001"
-DIM = 768        # 預設 3072；截短成 768 省記憶體與比對時間（靠 [[MRL]]）
+from shared.settings import settings
 
 # Gemini 的兩個限制，兩個都是 FAQ 時代（5 筆）不會碰到、換成職缺（140 塊）才炸出來的：
-#   1. BatchEmbedContentsRequest 一次最多 100 筆 → 400 INVALID_ARGUMENT
+#   1. BatchEmbedContentsRequest 一次最多 100 筆 → 400 INVALID_ARGUMENT（見 batch）
 #   2. 免費方案「每分鐘 100 個 request」，而 batch 裡每段文字各算一個 → 429
-BATCH = 100
-CACHE = Path(__file__).resolve().parent.parent / "data" / "vecs_cloud.npz"
 
 
 class CloudRetriever(BaseRetriever):
@@ -28,30 +23,39 @@ class CloudRetriever(BaseRetriever):
     # 0.003），所以雲端這側門檻還真的擋得住離題，不像地端得交給模型判斷。
     min_score = 0.65
 
-    def __init__(self, docs=None, min_score=None, client=None, cache=CACHE):
-        """client 不傳就自己建一個（會讀 .env）。cache=None 可關掉磁碟快取。"""
+    def __init__(self, docs=None, min_score=None, client=None, cache=None,
+                 config=None):
+        """client 不傳就自己建一個（延遲到第一次用才讀金鑰）。
+
+        cache 不傳就用設定裡的路徑；傳 cache=False 可以關掉磁碟快取。
+        """
         super().__init__(docs=docs, min_score=min_score)
+        cfg = config or settings()
+        self._cfg = cfg
         self._client = client
-        self.cache = cache
+        self.model = cfg.gemini_embed_model
+        self.dim = cfg.gemini_embed_dim
+        self.batch = cfg.gemini_embed_batch
+        self.cache = cfg.vecs_cache_path if cache is None else cache
 
     @property
     def client(self):
         if self._client is None:
-            self._client = make_client()
+            self._client = make_client(config=self._cfg)
         return self._client
 
     def embed(self, texts, task_type):
         vecs = []
-        for i in range(0, len(texts), BATCH):
-            part = texts[i:i + BATCH]
+        for i in range(0, len(texts), self.batch):
+            part = texts[i:i + self.batch]
             for attempt in range(6):
                 try:
                     resp = self.client.models.embed_content(
-                        model=MODEL,
+                        model=self.model,
                         contents=part,
                         config=types.EmbedContentConfig(
                             task_type=task_type,   # ← 取代 e5 的 "passage:" / "query:" 前綴
-                            output_dimensionality=DIM,
+                            output_dimensionality=self.dim,
                         ),
                     )
                     break
@@ -78,7 +82,7 @@ class CloudRetriever(BaseRetriever):
         快取用 docs 的 text 算雜湊當 key——重建 jobs.json 之後會自動失效重算。
         """
         texts = [d.text for d in self.docs]
-        if self.cache is None:
+        if not self.cache:
             return self.embed(texts, "RETRIEVAL_DOCUMENT")
 
         key = hashlib.sha256("\n".join(texts).encode("utf-8")).hexdigest()[:16]

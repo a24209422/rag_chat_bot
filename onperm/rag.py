@@ -2,8 +2,7 @@
 from functools import lru_cache
 
 from shared.retriever import BaseRetriever
-
-MODEL = "intfloat/multilingual-e5-small"
+from shared.settings import settings
 
 # e5 是用 "query: " / "passage: " 前綴區分查詢與文件，Gemini 是用 task_type 參數。
 # 這裡把 task_type 映成前綴，函式形狀就跟 cloud/rag.py 的 embed 一樣。
@@ -11,7 +10,7 @@ _PREFIX = {"RETRIEVAL_QUERY": "query: ", "RETRIEVAL_DOCUMENT": "passage: "}
 
 
 @lru_cache(maxsize=2)
-def load_embedder(name=MODEL):
+def load_embedder(name):
     """載入 SentenceTransformer，依模型名快取。
 
     快取是因為載入很貴（第一次還要下載約 470MB），不是因為需要全域狀態——
@@ -38,9 +37,9 @@ class OnpremRetriever(BaseRetriever):
     # 重建 jobs.json 之後要重跑：python -m tools.probe_threshold onperm
     min_score = 0.82
 
-    def __init__(self, docs=None, min_score=None, model=MODEL):
+    def __init__(self, docs=None, min_score=None, model=None, config=None):
         super().__init__(docs=docs, min_score=min_score)
-        self.model = model
+        self.model = model or (config or settings()).onperm_embed_model
 
     @property
     def embedder(self):

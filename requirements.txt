@@ -5,9 +5,11 @@
 # 開發工具（pytest / ruff / pre-commit）在 requirements-dev.txt，
 # 刻意分開：cloud_app.py 要部署到 Streamlit Cloud，那邊不需要測試工具。
 
+# 設定（shared/settings.py 用它讀 .env 並做型別轉換）
+pydantic-settings==2.15.0
+
 # 雲端版（Gemini）
 google-genai==2.22.0
-python-dotenv==1.2.3
 numpy==2.5.2
 streamlit==1.62.0
 
