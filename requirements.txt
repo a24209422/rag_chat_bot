@@ -7,3 +7,6 @@ streamlit
 # 地端版（llama.cpp + 本地 embedding）
 requests
 sentence-transformers
+
+# 資料建置（tools/build_jobs.py 把職缺 PDF 解析成 data/jobs.json）
+pypdfium2
