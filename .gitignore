@@ -16,6 +16,9 @@ env/
 models/
 *.gguf
 .cache/
+# 向量索引快取（可由 jobs.json 重算；gitignore 不吃行尾註解，註解要自己一行）
+data/vecs_*.npz
+
 
 # 編輯器 / 作業系統
 .DS_Store
