@@ -20,7 +20,8 @@ client = genai.Client(api_key=KEY)
 MODEL = "gemini-flash-latest"
 
 
-def ask(user, history, k=2):
+def ask(user, history, k=5):     # 5 個不同職缺。問「有哪些…」要撈得回一串，
+                                 # k=2 的時代是 FAQ，一題只有一個正確答案
     """檢索 + 生成。history 會就地更新，回傳 (reply, hits, usage)。
     usage 是這次生成用掉的 token；短路那條路沒打生成 API，所以是 0。
     失敗時丟例外，history 維持呼叫前的樣子。"""

@@ -45,14 +45,37 @@ def doc_vecs():
     return _DOC_VECS
 
 
-def retrieve(question, k=2, min_score=0.70):       # ← 門檻用量的，見 probe_threshold.py
-    qv = embed([question], "RETRIEVAL_QUERY")[0]    # 線上查詢
+def retrieve(question, k=5, min_score=0.82):
+    """回傳 k 個「不同職缺」，不是 k 個塊。
+
+    一個職缺被切成好幾塊，同一個問句常常同時撈到同一職缺的多塊
+    （實測 12 個問句有 9 個發生），不去重的話同一份 full 會被重複塞進
+    prompt，既浪費 context 又排擠掉其他職缺。
+
+    min_score 現在只是個下限，用來擋掉明顯無關的塊——它已經不能當
+    「離題守門員」了：對這批資料量出來的間隙只有 0.003 寬
+    （FAQ 時代是 0.046），離題問句「推薦一家餐廳」0.863 跟正常問句
+    「耐能智慧在徵什麼人」0.866 幾乎貼在一起。原因是候選塊從 5 個變成
+    140 個，雜訊的最大值被推高，但正確答案的分數不會跟著漲。
+    離題的判斷改由模型負責（見 shared/knowledge.py 的 SYSTEM）。
+    """
+    qv = embed([question], "RETRIEVAL_QUERY")[0]
     scores = doc_vecs() @ qv
-    top = np.argsort(-scores)[:k]
-    return [(DOCS[i], float(scores[i])) for i in top if scores[i] >= min_score]
+    out, seen = [], set()
+    for i in np.argsort(-scores):              # 由高到低掃
+        if scores[i] < min_score:
+            break                              # 已排序，低於門檻後面不用看了
+        d = DOCS[i]
+        if d.group in seen:                    # 同職缺只留最高分那塊
+            continue
+        seen.add(d.group)
+        out.append((d, float(scores[i])))
+        if len(out) == k:
+            break
+    return out
 
 
 if __name__ == "__main__":
-    question = "如何申請退款？"
+    question = "有哪些無人機相關的職缺？"
     for doc, score in retrieve(question):
         print(f"{score:.4f}  {doc.label}")

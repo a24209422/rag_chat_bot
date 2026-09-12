@@ -11,7 +11,8 @@ from knowledge import SYSTEM   # noqa: E402 ← 兩邊共用，見 shared/knowle
 URL = "http://localhost:8080/v1/chat/completions"
 
 
-def ask(user, history, k=2):
+def ask(user, history, k=5):     # 5 個不同職缺。問「有哪些…」要撈得回一串，
+                                 # k=2 的時代是 FAQ，一題只有一個正確答案
     """檢索 + 生成。history 會就地更新，回傳 (reply, hits)。
     沒有 usage：本機推論不計費，沒有配額可省，所以不像雲端版要數 token。
     失敗時丟例外，history 維持呼叫前的樣子。"""
