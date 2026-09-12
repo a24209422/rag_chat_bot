@@ -27,7 +27,7 @@ for m, src in zip(st.session_state.history, st.session_state.sources):
     with st.chat_message(role):                 # 一格要放兩樣東西，所以用 with
         st.write(m["parts"][0]["text"])
         for d, s in (src or []):                # user 那格是 None，不能直接迭代
-            st.caption(f"`{s:.3f}` {d}")
+            st.caption(f"`{s:.3f}` {d.label}")
 
 if user := st.chat_input("說點什麼…"):
     st.chat_message("user").write(user)
@@ -54,7 +54,7 @@ if user := st.chat_input("說點什麼…"):
         with st.chat_message("assistant"):
             st.write(reply)
             for d, s in hits:           # 這次的來源要自己畫，頂端迴圈還看不到它
-                st.caption(f"`{s:.3f}` {d}")
+                st.caption(f"`{s:.3f}` {d.label}")
 
 # 擺在最後才畫，這樣數字包含剛才那一輪（sidebar 位置跟程式順序無關）
 st.sidebar.metric("輸入 token", st.session_state.usage["in"])

@@ -18,7 +18,7 @@ for m, src in zip(st.session_state.history, st.session_state.sources):
     with st.chat_message(m["role"]):            # 地端是 OpenAI 格式，role 直接就能畫
         st.write(m["content"])                  # （雲端要把 model 轉成 assistant）
         for d, s in (src or []):                # user 那格是 None，不能直接迭代
-            st.caption(f"`{s:.3f}` {d}")
+            st.caption(f"`{s:.3f}` {d.label}")
 
 if user := st.chat_input("說點什麼…"):
     st.chat_message("user").write(user)
@@ -42,7 +42,7 @@ if user := st.chat_input("說點什麼…"):
         with st.chat_message("assistant"):
             st.write(reply)
             for d, s in hits:           # 這次的來源要自己畫，頂端迴圈還看不到它
-                st.caption(f"`{s:.3f}` {d}")
+                st.caption(f"`{s:.3f}` {d.label}")
 
     # ask() 會就地截短 history（onperm/chat_bot.py 的 len > 11），雲端版沒這回事。
     # sources 不跟著切的話，zip() 會從頭配對 → 來源標到別人的回答底下。

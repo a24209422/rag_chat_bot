@@ -41,7 +41,7 @@ _DOC_VECS = None            # import 時不打 API，第一次檢索才建索引
 def doc_vecs():
     global _DOC_VECS
     if _DOC_VECS is None:                           # 算過就重用
-        _DOC_VECS = embed(DOCS, "RETRIEVAL_DOCUMENT")   # ← 從 import 時搬到這裡
+        _DOC_VECS = embed([d.text for d in DOCS], "RETRIEVAL_DOCUMENT")   # ← 從 import 時搬到這裡
     return _DOC_VECS
 
 
@@ -54,5 +54,5 @@ def retrieve(question, k=2, min_score=0.70):       # ← 門檻用量的，見 p
 
 if __name__ == "__main__":
     question = "如何申請退款？"
-    for text, score in retrieve(question):
-        print(f"{score:.4f}  {text}")
+    for doc, score in retrieve(question):
+        print(f"{score:.4f}  {doc.label}")

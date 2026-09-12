@@ -22,7 +22,7 @@ def ask(user, history, k=2):
         history.append({"role": "assistant", "content": reply})
         return reply, hits            # 省掉一次本機推論——地端省的是等待，不是配額
 
-    context = "\n".join(f"[{i+1}] {d}" for i, (d, _) in enumerate(hits))
+    context = "\n".join(f"[{i+1}] {d.full}" for i, (d, _) in enumerate(hits))
     prompt = f"【資料】\n{context}\n\n【問題】\n{user}"
 
     history.append({"role": "user", "content": user})     # 歷史存乾淨的

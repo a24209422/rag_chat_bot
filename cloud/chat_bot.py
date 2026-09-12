@@ -31,7 +31,7 @@ def ask(user, history, k=2):
         history.append({"role": "model", "parts": [{"text": reply}]})
         return reply, hits, {"in": 0, "out": 0}   # 省掉生成那通 API（檢索那通還是打了）
 
-    context = "\n".join(f"[{i+1}] {d}" for i, (d, _) in enumerate(hits))
+    context = "\n".join(f"[{i+1}] {d.full}" for i, (d, _) in enumerate(hits))
     prompt = f"【資料】\n{context}\n\n【問題】\n{user}"
 
     history.append({"role": "user", "parts": [{"text": user}]})    # 歷史存乾淨的
@@ -83,7 +83,7 @@ if __name__ == "__main__":
             continue
 
         for d, s in hits:                                  # ← 看檢索品質
-            print(f"  ↳ {s:.3f}  {d[:30]}…")
+            print(f"  ↳ {s:.3f}  {d.label[:30]}…")
         print(f"  [token] 入 {usage['in']}  出 {usage['out']}（含思考）")
 
         print("AI >", reply)

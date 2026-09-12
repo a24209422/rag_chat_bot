@@ -37,7 +37,7 @@ def embed(texts, task_type):
 def doc_vecs():
     global _DOC_VECS
     if _DOC_VECS is None:                  # 算過就重用
-        _DOC_VECS = embed(DOCS, "RETRIEVAL_DOCUMENT")
+        _DOC_VECS = embed([d.text for d in DOCS], "RETRIEVAL_DOCUMENT")
     return _DOC_VECS
 
 
@@ -54,4 +54,4 @@ def retrieve(question, k=2, min_score=0.84):
 
 if __name__ == "__main__":
     for doc, score in retrieve("有什麼優惠"):
-        print(f"{score:.3f}  {doc}")
+        print(f"{score:.3f}  {doc.label}")

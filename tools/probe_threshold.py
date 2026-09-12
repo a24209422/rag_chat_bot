@@ -46,7 +46,7 @@ for name, questions in GROUPS.items():
         s = D @ qv
         i, j = np.argsort(-s)[:2]             # 看前兩名：第2名通常就是雜訊的高度
         firsts.append(float(s[i]))
-        print(f"  {q:<18} 第1名 {s[i]:.3f}   第2名 {s[j]:.3f}   ← {rag.DOCS[i][:10]}…")
+        print(f"  {q:<18} 第1名 {s[i]:.3f}   第2名 {s[j]:.3f}   ← {rag.DOCS[i].label[:10]}…")
     tops[name] = firsts
     print(f"  {'範圍':<18} {min(firsts):.3f} ～ {max(firsts):.3f}")
 
