@@ -21,13 +21,21 @@ def _check(side):
         raise ValueError("side 要是 %s 之一，收到 %r" % (" 或 ".join(SIDES), side))
 
 
-def retriever_for(side, **kw):
-    """建一個 Retriever。kw 直接轉給建構子（docs、min_score、config…）。
+def retriever_for(side, config=None, **kw):
+    """建一個 Retriever。kw 直接轉給建構子（docs、min_score、store_path…）。
+
+    沒有明確傳 docs 的話會接上共用的 registry——索引才會跟上傳的文件同步。
+    傳了 docs 就是「測試那條路」：不碰磁碟、不碰 registry。
 
     import 刻意放在函式裡：載入地端會連帶拉進 sentence_transformers，
     只想用雲端的人不該付這個成本。
     """
     _check(side)
+    cfg = config or settings()
+    kw.setdefault("config", cfg)
+    if kw.get("docs") is None and "registry" not in kw:
+        from shared.registry import registry_at
+        kw["registry"] = registry_at(cfg.registry_path)
     if side == "cloud":
         from cloud.rag import CloudRetriever
         return CloudRetriever(**kw)

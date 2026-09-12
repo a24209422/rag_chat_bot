@@ -20,8 +20,12 @@ env/
 models/
 *.gguf
 .cache/
-# 向量索引快取（可由 jobs.json 重算；gitignore 不吃行尾註解，註解要自己一行）
+# 執行期產生的：向量索引與上傳文件的登記簿。
+# 索引可以重算，登記簿是各台機器自己的狀態，都不該進版控。
+# （gitignore 不吃行尾註解，註解要自己一行）
+data/store_*.npz
 data/vecs_*.npz
+data/registry.db
 
 
 # 編輯器 / 作業系統

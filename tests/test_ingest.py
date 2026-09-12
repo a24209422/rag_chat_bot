@@ -1,4 +1,4 @@
-"""tools/build_jobs.py 裡那些清理函式的測試。
+"""shared/ingest.py 裡那些清理函式的測試。
 
 跟 facets.py 一樣，這些規則每一條都是實際掃過那批 PDF、逐處比對原圖之後
 才加的。它們壞掉的症狀都是「使用者打正常的字卻搜不到」——不會報錯，
@@ -6,7 +6,7 @@
 """
 import pytest
 
-from tools.build_jobs import clean, join_lines, label_re, page_text, parse_job, split_long
+from shared.ingest import clean, join_lines, label_re, page_text, parse_job, split_long
 
 
 # ── clean()：PDF 抽出來的字元有好幾種長得一樣但碼位不同 ──────────────

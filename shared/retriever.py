@@ -2,9 +2,9 @@
 #
 #   雲端與地端的 retrieve() 本來是兩份逐字相同的程式碼，靠「請照著改」維持一致。
 #   收成 base class 之後，兩邊的差異縮到只剩三樣：
-#       embed()      怎麼把文字變成向量（Gemini API / 本機 e5）
-#       min_score    對各自的模型量出來的門檻（差 30 倍，見各子類的註解）
-#       doc_vecs 的建法  雲端要快取（燒配額），地端不用（重算只是慢十秒）
+#       embed()             怎麼把文字變成向量（Gemini API / 本機 e5）
+#       min_score           對各自的模型量出來的門檻（差 30 倍，見各子類的註解）
+#       embed_model / dim   給索引檔做相容性檢查用
 #   「同名同形狀」從此是繼承保證的，不是靠約定。
 #
 #   狀態（索引、區名詞彙表、知識庫）全部掛在實例上，不是模組層全域——
@@ -13,52 +13,62 @@
 import numpy as np
 
 from shared.facets import known_districts, match, parse_query
-from shared.knowledge import default_docs
+from shared.knowledge import Doc, default_docs
+from shared.store import NumpyStore
 
 
 class BaseRetriever:
-    """檢索器。子類要提供 embed()，其餘共用。"""
+    """檢索器。子類要提供 embed()、embed_model、dim。"""
 
     # 子類覆寫。0.0 代表「不擋」，是刻意安全的預設：
     # 忘了量門檻的後果應該是「撈回太多」，不是「靜默地撈不到」。
     min_score = 0.0
+    embed_model = ""       # 存進索引檔，重開時比對——換了模型就必須整個重算
+    dim = 0
 
-    def __init__(self, docs=None, min_score=None):
-        """docs 不傳就用 shared.knowledge.default_docs()（延遲到第一次用才讀檔）。
+    def __init__(self, docs=None, min_score=None, store_path=None, registry=None):
+        """docs 是「基礎語料」——索引檔不存在時拿來初始化的那批。
+        不傳就用 shared/knowledge.py 的 default_docs()。
 
-        測試要塞自己的知識庫就傳 docs=[Doc(...), ...]，不必有 data/jobs.json。
+        store_path 不傳就不落地（測試預設如此：不碰磁碟）。
+        registry 給了的話，索引會跟上傳的文件保持同步（見 refresh）。
         """
-        self._docs = docs
+        self._seed = docs
+        self._store = None
         self._districts = None
-        self._doc_vecs = None
+        self.store_path = store_path
+        self.registry = registry
         if min_score is not None:
             self.min_score = min_score
 
     # ── 延遲載入的狀態：建構不做重活，第一次用到才算 ──────────────────
     @property
-    def docs(self):
-        if self._docs is None:
-            self._docs = default_docs()
-        return self._docs
+    def store(self):
+        if self._store is None:
+            self._store = self._build_store()
+        return self._store
 
     @property
-    def districts(self):
-        """區名詞彙表：問句裡的「內湖」沒有「區」字可當錨點，只能靠詞彙表比對。
-        從 docs 長出來，所以重建 jobs.json 之後會自動跟著更新。"""
-        if self._districts is None:
-            self._districts = known_districts(self.docs)
-        return self._districts
-
-    def doc_vecs(self):
-        if self._doc_vecs is None:
-            self._doc_vecs = self._build_doc_vecs()
-        return self._doc_vecs
+    def docs(self):
+        return self.store.docs
 
     @property
     def indexed(self):
         """索引算好了沒。給 /health 與預熱用——建構出 Retriever 不代表
         索引就算好了，這兩件事的成本差好幾個數量級。"""
-        return self._doc_vecs is not None
+        return self._store is not None
+
+    @property
+    def districts(self):
+        """區名詞彙表：問句裡的「內湖」沒有「區」字可當錨點，只能靠詞彙表比對。
+        從 docs 長出來，所以上傳新文件之後會跟著更新（見 refresh）。"""
+        if self._districts is None:
+            self._districts = known_districts(self.docs)
+        return self._districts
+
+    def doc_vecs(self):
+        """整個索引的向量。給 tools/probe_threshold.py 用。"""
+        return self.store.vectors
 
     # ── 子類負責的部分 ──────────────────────────────────────────────
     def embed(self, texts, task_type):
@@ -69,9 +79,49 @@ class BaseRetriever:
         """
         raise NotImplementedError
 
-    def _build_doc_vecs(self):
-        """建索引。雲端會覆寫這個加上磁碟快取（重算要燒 140 個 request 配額）。"""
-        return self.embed([d.text for d in self.docs], "RETRIEVAL_DOCUMENT")
+    def _embed_docs(self, docs):
+        return self.embed([d.text for d in docs], "RETRIEVAL_DOCUMENT")
+
+    # ── 索引的建立與同步 ────────────────────────────────────────────
+    def _build_store(self):
+        store = NumpyStore(self.embed_model, self.dim, self.store_path)
+
+        if not store.load():                      # 沒有索引檔，或模型/維度對不上
+            seed = self._seed if self._seed is not None else default_docs()
+            store.add(seed, self._embed_docs(seed))
+        self._sync(store)
+        store.save()
+        return store
+
+    def _sync(self, store):
+        """讓索引跟 registry 對齊：補上新上傳的文件、拿掉被刪掉的。
+
+        這就是「增量」的意思——只算差集，不重建整個索引。雲端重算一次是
+        140 個 API request 加上跨配額視窗的兩分鐘等待，差很多。
+        """
+        if self.registry is None:
+            return 0, 0
+
+        want = self.registry.doc_ids()
+        have = store.sources()
+
+        removed = sum(store.remove_source(gone) for gone in have - want)
+
+        added, missing = 0, want - have
+        if missing:
+            chunks = self.registry.chunks_of(missing)
+            docs = [Doc(**c) for part in chunks.values() for c in part]
+            if docs:
+                added = store.add(docs, self._embed_docs(docs))
+        return added, removed
+
+    def refresh(self):
+        """registry 被改過之後呼叫。回傳 (加了幾塊, 刪了幾塊)。"""
+        added, removed = self._sync(self.store)
+        if added or removed:
+            self.store.save()
+            self._districts = None        # 區名詞彙表要跟著重算
+        return added, removed
 
     # ── 共用的檢索邏輯 ──────────────────────────────────────────────
     def retrieve(self, question, k=5, min_score=None, filters=None):
@@ -97,7 +147,7 @@ class BaseRetriever:
 
         docs = self.docs
         qv = self.embed([question], "RETRIEVAL_QUERY")[0]
-        scores = self.doc_vecs() @ qv
+        scores = self.store.scores(qv)
 
         if filters:
             cand = [i for i in range(len(docs)) if match(docs[i].facets, filters)]

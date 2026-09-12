@@ -11,6 +11,7 @@ pydantic-settings==2.15.0
 # 後端 API
 fastapi==0.141.1
 uvicorn==0.52.4
+python-multipart==0.0.32     # 檔案上傳（POST /documents）用的
 
 # 雲端版（Gemini）
 google-genai==2.22.0

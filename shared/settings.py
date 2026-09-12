@@ -41,6 +41,9 @@ class Settings(BaseSettings):
     llama_url: str = "http://localhost:8080/v1/chat/completions"
     llama_timeout: int = 120
     onperm_embed_model: str = "intfloat/multilingual-e5-small"
+    # 要跟模型對得上。e5-small 是 384；換模型忘了改的話，第一次寫入索引就會
+    # 當場報錯（NumpyStore.add 會檢查），不會默默算出爛向量。
+    onperm_embed_dim: int = 384
 
     # ── 生成 ─────────────────────────────────────────────────────────
     temperature: float = 0.2
@@ -63,12 +66,26 @@ class Settings(BaseSettings):
     # 在 .env 裡寫起來很彆扭。
     api_warm: str = ""
 
+    # ── 上傳的文件 ───────────────────────────────────────────────────
+    max_upload_bytes: int = 10 * 1024 * 1024
+    allowed_upload_suffixes: str = ".pdf"      # 逗號分隔，理由見 shared/ingest.py
+
     # ── 路徑 ─────────────────────────────────────────────────────────
-    jobs_path: Path = ROOT / "data" / "jobs.json"
-    vecs_cache_path: Path = ROOT / "data" / "vecs_cloud.npz"
+    jobs_path: Path = ROOT / "data" / "jobs.json"       # 建置階段的基礎語料
+    registry_path: Path = ROOT / "data" / "registry.db"  # 上傳文件的登記簿
+    # 索引檔一邊一個——兩邊的向量空間不同，不能混
+    cloud_store_path: Path = ROOT / "data" / "store_cloud.npz"
+    onperm_store_path: Path = ROOT / "data" / "store_onperm.npz"
 
     def warm_sides(self):
         return [s.strip() for s in self.api_warm.split(",") if s.strip()]
+
+    def upload_suffixes(self):
+        return [s.strip().lower() for s in self.allowed_upload_suffixes.split(",")
+                if s.strip()]
+
+    def store_path_for(self, side):
+        return self.cloud_store_path if side == "cloud" else self.onperm_store_path
 
 
 @lru_cache(maxsize=1)

@@ -6,6 +6,8 @@ from typing import Annotated
 from fastapi import Depends
 
 import providers
+from shared.registry import Registry, registry_at
+from shared.settings import settings
 
 # side → ChatBot。用自己的 dict 而不是 lru_cache，是因為 lru_cache 沒有
 # 「只看不建」的 API——想知道哪幾邊已經載入，就只能去呼叫它，而那正好會
@@ -54,8 +56,32 @@ def get_bot_factory():
     return bot_for
 
 
+def get_registry():
+    return registry_at(settings().registry_path)
+
+
+def refresh_loaded():
+    """上傳或刪除之後，把「已經建好索引」的那幾邊拉回同步。
+
+    還沒載入的不用管——它們第一次被建起來時就會自己跟 registry 對齊
+    （見 BaseRetriever._sync）。先建好再同步是浪費，尤其地端要載 e5。
+    """
+    out = {}
+    for side, bot in _bots.items():
+        if bot.retriever.indexed:
+            added, removed = bot.retriever.refresh()
+            out[side] = {"added": added, "removed": removed}
+    return out
+
+
+def chunk_counts():
+    return {side: len(bot.retriever.store)
+            for side, bot in _bots.items() if bot.retriever.indexed}
+
+
 # 型別別名，端點簽名才不會被依賴注入的雜訊塞滿。
 # 用 Annotated 而不是 factory=Depends(...) 是 FastAPI 現在推薦的寫法：
 # 預設值裡呼叫函式本來就是可疑的（ruff 的 B008 會抓），Annotated 把它
 # 放進型別註記，兩邊都乾淨。
 BotFactoryDep = Annotated[Callable, Depends(get_bot_factory)]
+RegistryDep = Annotated[Registry, Depends(get_registry)]

@@ -1,5 +1,4 @@
 # cloud/rag.py（Gemini 版檢索）
-import hashlib
 import re
 import sys
 import time
@@ -23,20 +22,22 @@ class CloudRetriever(BaseRetriever):
     # 0.003），所以雲端這側門檻還真的擋得住離題，不像地端得交給模型判斷。
     min_score = 0.65
 
-    def __init__(self, docs=None, min_score=None, client=None, cache=None,
-                 config=None):
+    def __init__(self, docs=None, min_score=None, client=None, config=None,
+                 store_path=None, registry=None):
         """client 不傳就自己建一個（延遲到第一次用才讀金鑰）。
 
-        cache 不傳就用設定裡的路徑；傳 cache=False 可以關掉磁碟快取。
+        store_path 不傳就用設定裡的路徑；傳 False 代表不落地（測試用）。
         """
-        super().__init__(docs=docs, min_score=min_score)
         cfg = config or settings()
+        super().__init__(
+            docs=docs, min_score=min_score, registry=registry,
+            store_path=cfg.cloud_store_path if store_path is None else store_path or None)
         self._cfg = cfg
         self._client = client
         self.model = cfg.gemini_embed_model
+        self.embed_model = cfg.gemini_embed_model
         self.dim = cfg.gemini_embed_dim
         self.batch = cfg.gemini_embed_batch
-        self.cache = cfg.vecs_cache_path if cache is None else cache
 
     @property
     def client(self):
@@ -73,28 +74,6 @@ class CloudRetriever(BaseRetriever):
         v = np.array(vecs, dtype="float32")
         v /= np.linalg.norm(v, axis=1, keepdims=True)   # ← 非 3072 維時「必須」自己正規化
         return v
-
-    def _build_doc_vecs(self):
-        """建索引，並存成快取。
-
-        地端重算只是慢十秒，雲端重算是燒 140 個 request 配額外加兩分鐘等待
-        （免費方案每分鐘只給 100 個），所以雲端這側非快取不可。
-        快取用 docs 的 text 算雜湊當 key——重建 jobs.json 之後會自動失效重算。
-        """
-        texts = [d.text for d in self.docs]
-        if not self.cache:
-            return self.embed(texts, "RETRIEVAL_DOCUMENT")
-
-        key = hashlib.sha256("\n".join(texts).encode("utf-8")).hexdigest()[:16]
-        if self.cache.exists():
-            z = np.load(self.cache, allow_pickle=False)
-            if str(z["key"]) == key:
-                return z["vecs"]
-
-        vecs = self.embed(texts, "RETRIEVAL_DOCUMENT")
-        self.cache.parent.mkdir(parents=True, exist_ok=True)
-        np.savez(self.cache, key=np.array(key), vecs=vecs)
-        return vecs
 
 
 if __name__ == "__main__":       # python -m cloud.rag

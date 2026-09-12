@@ -15,22 +15,27 @@ from shared.retriever import BaseRetriever
 class FakeRetriever(BaseRetriever):
     """分數由字典指定的檢索器。
 
-    手法：文件向量做成 (n, 1)、查詢向量做成 [1.0]，那麼 doc_vecs() @ qv
-    就剛好等於我們指定的分數。這樣就能精準佈置「剛好卡在門檻上」這類邊界。
+    手法：文件向量做成 (n, 1)、查詢向量做成 [1.0]，那麼相似度就剛好等於
+    我們指定的分數。這樣就能精準佈置「剛好卡在門檻上」這類邊界。
+
+    ⚠ embed() 只能用傳進來的 texts，不能碰 self.docs——docs 會觸發建索引，
+      而建索引又要呼叫 embed()，直接無窮遞迴。（踩過一次。）
     """
 
     min_score = 0.5
+    embed_model = "fake"
+    dim = 1
 
     def __init__(self, docs, scores, **kw):
         super().__init__(docs=docs, **kw)
-        self.scores = scores                  # {doc.id: 分數}
+        self.scores = scores                  # {doc.text: 分數}；doc() 讓 text == id
         self.embed_calls = 0
 
     def embed(self, texts, task_type):
         self.embed_calls += 1
         if task_type == "RETRIEVAL_QUERY":
             return np.array([[1.0]], dtype="float32")
-        return np.array([[self.scores[d.id]] for d in self.docs], dtype="float32")
+        return np.array([[self.scores[t]] for t in texts], dtype="float32")
 
 
 def doc(id_, group=None, **facets):
@@ -146,8 +151,9 @@ def test_索引只建一次():
 
 
 def test_可以傳自己的docs不必有jobs_json():
+    """store 會自己持有一份（因為它之後還要被增刪），所以比內容不比身分。"""
     mine = [doc("X")]
-    assert FakeRetriever(mine, {"X": 0.9}).docs is mine
+    assert FakeRetriever(mine, {"X": 0.9}).docs == mine
 
 
 def test_區名詞彙表從傳進來的docs長出來():
@@ -159,3 +165,107 @@ def test_base_class_沒實作embed():
     """子類一定要提供 embed()，忘了就當場炸，不要默默算出爛向量。"""
     with pytest.raises(NotImplementedError):
         BaseRetriever(docs=[doc("A")]).embed(["x"], "RETRIEVAL_QUERY")
+
+
+# ── 跟上傳的文件保持同步（增量，不重建） ──────────────────────────────
+def chunk(id_, source, score_key=None):
+    """registry 裡存的塊：dict，形狀跟 Doc 一致。"""
+    return {"id": id_, "text": score_key or id_, "group": id_.split("#")[0],
+            "source": source}
+
+
+def test_建索引時會把registry裡的文件一起收進來(tmp_path):
+    from shared.registry import Registry
+
+    reg = Registry(tmp_path / "reg.db")
+    reg.put("甲.pdf", "application/pdf", 1, "v1",
+            [chunk("A-01#基本", "doc1"), chunk("A-01#內容", "doc1")], jobs=1)
+    doc_id = next(iter(reg.doc_ids()))
+    for c in reg.get(doc_id)["chunks"]:
+        c["source"] = doc_id                 # put 之後才知道 doc_id
+    reg.put("甲.pdf", "application/pdf", 1, "v1",
+            [chunk("A-01#基本", doc_id), chunk("A-01#內容", doc_id)], jobs=1)
+
+    r = FakeRetriever([doc("SEED")], {"SEED": 0.9, "A-01#基本": 0.8, "A-01#內容": 0.7},
+                      registry=reg)
+
+    assert {d.id for d in r.docs} == {"SEED", "A-01#基本", "A-01#內容"}
+    assert r.store.sources() == {doc_id}
+
+
+def make_synced(tmp_path, extra_scores=None):
+    from shared.registry import Registry
+
+    reg = Registry(tmp_path / "reg.db")
+    scores = {"SEED": 0.9}
+    scores.update(extra_scores or {})
+    r = FakeRetriever([doc("SEED")], scores, registry=reg)
+    assert r.docs                             # 先把索引建起來
+    return r, reg
+
+
+def add_doc(reg, filename, doc_id_chunks):
+    doc_id = reg.put(filename, "application/pdf", 1, "v1", [], jobs=1)
+    reg.put(filename, "application/pdf", 1, "v1",
+            [chunk(i, doc_id) for i in doc_id_chunks], jobs=1)
+    return doc_id
+
+
+def test_refresh_只算新的不重建整個索引(tmp_path):
+    """雲端重算一次是 140 個 API request 加上跨配額視窗的兩分鐘等待，
+    所以「只算差集」不是優化，是可用性。"""
+    r, reg = make_synced(tmp_path, {"A-01#基本": 0.8})
+    calls_before = r.embed_calls
+
+    add_doc(reg, "甲.pdf", ["A-01#基本"])
+    added, removed = r.refresh()
+
+    assert (added, removed) == (1, 0)
+    assert r.embed_calls == calls_before + 1     # 只算了新加的那一塊
+    assert {d.id for d in r.docs} == {"SEED", "A-01#基本"}
+
+
+def test_refresh_會拿掉被刪掉的文件(tmp_path):
+    r, reg = make_synced(tmp_path, {"A-01#基本": 0.8, "A-01#內容": 0.7})
+    doc_id = add_doc(reg, "甲.pdf", ["A-01#基本", "A-01#內容"])
+    r.refresh()
+
+    reg.delete(doc_id)
+    added, removed = r.refresh()
+
+    assert (added, removed) == (0, 2)
+    assert {d.id for d in r.docs} == {"SEED"}
+    assert r.store.sources() == set()
+
+
+def test_refresh_沒變動就什麼都不做(tmp_path):
+    r, reg = make_synced(tmp_path)
+    calls_before = r.embed_calls
+
+    assert r.refresh() == (0, 0)
+    assert r.embed_calls == calls_before
+
+
+def test_refresh之後區名詞彙表會重算(tmp_path):
+    """新文件可能帶進新的區名。詞彙表不更新的話，問「板橋的職缺」永遠
+    抽不出過濾條件——而且不會報錯，只會默默退回純向量檢索。"""
+    from shared.registry import Registry
+
+    reg = Registry(tmp_path / "reg.db")
+    r = FakeRetriever([doc("SEED", district=["內湖"])], {"SEED": 0.9, "NEW": 0.8},
+                      registry=reg)
+    assert r.districts == ["內湖"]
+
+    doc_id = reg.put("甲.pdf", "application/pdf", 1, "v1", [], 1)
+    reg.put("甲.pdf", "application/pdf", 1, "v1",
+            [{"id": "NEW", "text": "NEW", "group": "NEW", "source": doc_id,
+              "facets": {"district": ["板橋"]}}], 1)
+    r.refresh()
+
+    assert r.districts == ["內湖", "板橋"]
+
+
+def test_沒有registry就不同步(tmp_path):
+    """測試那條路：只給 docs，不接 registry。"""
+    r = FakeRetriever([doc("A")], {"A": 0.9})
+    assert r.refresh() == (0, 0)

@@ -8,13 +8,25 @@
 import json
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, UploadFile
 from fastapi.responses import StreamingResponse
 
 import providers
 from api import deps
-from api.deps import BotFactoryDep
-from api.schemas import ChatRequest, ChatResponse, Health, Message, Source, Usage
+from api.deps import BotFactoryDep, RegistryDep
+from api.schemas import (
+    ChatRequest,
+    ChatResponse,
+    DeleteResult,
+    DocumentOut,
+    Health,
+    Message,
+    Source,
+    UploadResult,
+    Usage,
+)
+from shared.ingest import docs_from_pdf, version_of
+from shared.registry import doc_id_for
 from shared.settings import settings
 
 
@@ -41,8 +53,61 @@ app = FastAPI(
 
 
 @app.get("/health", response_model=Health)
-def health():
-    return Health(status="ok", sides=list(providers.SIDES), loaded=deps.loaded())
+def health(registry: RegistryDep):
+    return Health(status="ok", sides=list(providers.SIDES), loaded=deps.loaded(),
+                  chunks=deps.chunk_counts(), documents=len(registry.list()))
+
+
+@app.get("/documents", response_model=list[DocumentOut])
+def list_documents(registry: RegistryDep):
+    """列出**上傳的**文件。建置階段的基礎語料不在這裡，也刪不掉。"""
+    return [DocumentOut(**row) for row in registry.list()]
+
+
+@app.post("/documents", status_code=201, response_model=UploadResult)
+async def upload_document(file: UploadFile, registry: RegistryDep):
+    """上傳一份職缺 PDF，當場解析、切塊、進索引。
+
+    同一個檔名視為同一份文件：內容變了就是更新（舊的塊會被換掉），
+    內容一樣就回 409——沒有事情要做。
+    """
+    cfg = settings()
+    name = file.filename or ""
+    suffix = ("." + name.rsplit(".", 1)[-1].lower()) if "." in name else ""
+    if suffix not in cfg.upload_suffixes():
+        raise HTTPException(400, "只收 %s；只吃媒合會職缺表那個格式，理由見 "
+                                 "shared/ingest.py" % "、".join(cfg.upload_suffixes()))
+
+    data = await file.read()
+    if len(data) > cfg.max_upload_bytes:
+        raise HTTPException(413, "檔案超過 %d MB"
+                                 % (cfg.max_upload_bytes // 1024 // 1024))
+
+    doc_id, version = doc_id_for(name), version_of(data)
+    existing = registry.get(doc_id)
+    if existing and existing["version"] == version:
+        raise HTTPException(409, f"「{name}」已經上傳過同樣內容的版本了")
+
+    try:
+        chunks, jobs = docs_from_pdf(data, source=doc_id)
+    except Exception as e:
+        raise HTTPException(400, f"這份 PDF 解析不了：{e}") from e
+    if not chunks:
+        raise HTTPException(400, "解析不出任何職缺——確認這是媒合會職缺表的格式")
+
+    registry.put(name, file.content_type or "application/pdf", len(data), version,
+                 chunks, jobs)
+    return UploadResult(
+        document=DocumentOut(**registry.list_one(doc_id)),
+        index=deps.refresh_loaded(),
+    )
+
+
+@app.delete("/documents/{doc_id}", response_model=DeleteResult)
+def delete_document(doc_id: str, registry: RegistryDep):
+    if not registry.delete(doc_id):
+        raise HTTPException(404, f"沒有這份文件：{doc_id}")
+    return DeleteResult(doc_id=doc_id, index=deps.refresh_loaded())
 
 
 @app.post("/chat", response_model=ChatResponse)

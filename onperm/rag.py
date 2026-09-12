@@ -37,9 +37,15 @@ class OnpremRetriever(BaseRetriever):
     # 重建 jobs.json 之後要重跑：python -m tools.probe_threshold onperm
     min_score = 0.82
 
-    def __init__(self, docs=None, min_score=None, model=None, config=None):
-        super().__init__(docs=docs, min_score=min_score)
-        self.model = model or (config or settings()).onperm_embed_model
+    def __init__(self, docs=None, min_score=None, model=None, config=None,
+                 store_path=None, registry=None):
+        cfg = config or settings()
+        super().__init__(
+            docs=docs, min_score=min_score, registry=registry,
+            store_path=cfg.onperm_store_path if store_path is None else store_path or None)
+        self.model = model or cfg.onperm_embed_model
+        self.embed_model = self.model
+        self.dim = cfg.onperm_embed_dim
 
     @property
     def embedder(self):

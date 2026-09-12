@@ -59,8 +59,43 @@ class ChatResponse(BaseModel):
 class Health(BaseModel):
     status: Literal["ok"]
     sides: list[Side]           # 支援哪幾邊
-    loaded: list[Side]          # 已經建好索引的（第一次呼叫才建，所以會變）
+    loaded: list[Side]          # 索引已經算好的（第一次用到才算，所以會變）
+    chunks: dict[Side, int]     # 各邊索引裡有幾塊
+    documents: int              # 上傳的文件數（不含基礎語料）
 
 
 class ErrorBody(BaseModel):
     detail: str
+
+
+class DocumentOut(BaseModel):
+    """一份上傳的文件。
+
+    「基礎語料」（建置階段由 tools.build_jobs 產生的那批）不在這裡，
+    也不能經由 API 刪除——它是這個服務的底線，不是使用者管理的東西。
+    """
+
+    doc_id: str
+    filename: str
+    content_type: str
+    size: int
+    version: str          # 檔案內容的指紋。同名不同版 = 更新
+    jobs: int             # 這份 PDF 解析出幾個職缺
+    created_at: str
+
+
+class IndexChange(BaseModel):
+    added: int = 0
+    removed: int = 0
+
+
+class UploadResult(BaseModel):
+    document: DocumentOut
+    # 只有「已經建好索引」的那幾邊會當場更新；還沒載入的會在第一次用到時
+    # 自己跟 registry 對齊，所以不必在這裡等它。
+    index: dict[Side, IndexChange]
+
+
+class DeleteResult(BaseModel):
+    doc_id: str
+    index: dict[Side, IndexChange]

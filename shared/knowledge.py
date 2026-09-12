@@ -32,6 +32,7 @@ class Doc:
     facets: dict = field(default_factory=dict)  # 正規化後的分類，用來精確過濾
                                                # （見 shared/facets.py）
     group: str = ""                            # 同源標記：同一個職缺切出來的多塊共用代號
+    source: str = ""                           # 來自哪一份上傳的文件（空 = 建置階段的基礎語料）
 
     def __post_init__(self):
         if not self.label:

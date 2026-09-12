@@ -14,17 +14,22 @@ RAG 拆成兩段：先用 embedding 從知識庫撈出最相關的段落，再�
 ```
 ├── providers.py            retriever_for() / llm_for() / chat_for()：依名稱組零件
 ├── api/                    ← FastAPI 後端
-│   ├── main.py             GET /health、POST /chat
+│   ├── main.py             /health、/chat、/chat/stream、/documents
 │   ├── schemas.py          請求與回應的形狀（pydantic）
 │   └── deps.py             side → ChatBot，第一次用到才建
 ├── cloud_app.py            雲端版進入點（幾行，畫面在 shared/app.py）
 ├── onperm_app.py           地端版進入點
 ├── data/
-│   └── jobs.json           知識庫（由 tools.build_jobs 產生）
+│   ├── jobs.json           基礎語料（由 tools.build_jobs 產生）
+│   ├── registry.db         上傳文件的登記簿（執行期產生，不進版控）
+│   └── store_*.npz         各邊的向量索引（執行期產生，不進版控）
 ├── shared/                 ← 兩邊共用的，全部在這裡
 │   ├── settings.py         所有會因環境而異的設定（讀 .env）
 │   ├── knowledge.py        Doc 結構 + load_docs() + SYSTEM
 │   ├── facets.py           把自由文字的 metadata 正規化成可精確比對的分類
+│   ├── ingest.py           職缺 PDF → 塊（建置與上傳共用同一份解析）
+│   ├── store.py            向量儲存層：增刪、持久化
+│   ├── registry.py         上傳文件的登記簿（SQLite）
 │   ├── retriever.py        BaseRetriever：檢索邏輯，子類只補 embed()
 │   ├── llm.py              BaseLLM：跟模型講話的介面，子類補線路格式
 │   ├── chat_bot.py         ChatBot：檢索 + 生成的唯一一份實作
@@ -283,9 +288,12 @@ streamlit run cloud_app.py         # 另開一個終端
 
 | 方法 | 路徑 | 說明 |
 |---|---|---|
-| GET | `/health` | 健康檢查，附帶「哪幾邊的索引已經算好」 |
+| GET | `/health` | 健康檢查：哪幾邊的索引算好了、各有幾塊、上傳了幾份文件 |
 | POST | `/chat` | 檢索 + 生成，一次回完 |
 | POST | `/chat/stream` | 同上，但用 SSE 逐段吐字 |
+| GET | `/documents` | 列出上傳的文件 |
+| POST | `/documents` | 上傳一份職缺 PDF，當場切塊進索引 |
+| DELETE | `/documents/{id}` | 刪除文件與它的塊 |
 
 兩個聊天端點吃同一組參數（`question`、`history`、`side`、`k`），也走同一份
 `ChatBot`——差別只在回應怎麼送。
@@ -369,10 +377,72 @@ curl -X POST http://localhost:8000/chat -H "Content-Type: application/json"     
 `/health` 的 `loaded` 回報的也是「索引算好了」而不是「物件建好了」，
 所以看得出預熱有沒有生效。
 
+## 動態知識庫
+
+執行期可以上傳職缺 PDF，當場解析、切塊、進索引；也可以刪掉。
+
+```bash
+curl -F "file=@新公司職缺.pdf" http://localhost:8000/documents
+curl http://localhost:8000/documents
+curl -X DELETE http://localhost:8000/documents/<doc_id>
+```
+
+**同一個檔名視為同一份文件**：內容變了就是更新（舊的塊被換掉），內容一樣回 409。
+所以重傳一份改過的職缺表不會留下兩份。
+
+### 增量，不是重建
+
+`shared/registry.py`（SQLite）記「哪份文件切出哪些塊」，索引同步時只算差集。
+實測：
+
+| | 耗時 |
+|---|---|
+| 從零建索引（140 塊） | 地端 49.7 秒、雲端 87.2 秒（140 個 API request，撞了兩次配額） |
+| 上傳一份文件（+1 塊） | **0.08 秒** |
+| 重開讀索引檔 | **0.05 秒** |
+
+雲端重算一次要跨兩個配額視窗，所以「只算差集」不是優化，是可用性。
+
+### 塊存在 registry，向量各邊自己算
+
+雲端與地端的向量空間不同，索引檔各一份（`data/store_cloud.npz` / `store_onperm.npz`），
+但「上傳了哪些文件、切出哪些塊」只有一份。所以：
+
+- 上傳時只會更新**已經載入**的那幾邊
+- 還沒載入的那一邊，第一次被用到時會自己跟 registry 對齊（實測有效）
+
+> ⚠ **已知限制**：同步只發生在「建索引時」與「上傳／刪除時」。多個
+> server process 共用同一個 registry 的話，A 處理的上傳 B 要等到重啟才看得到。
+> 單一 process 不會碰到。
+
+### 換了 embedding 模型就必須整個重算
+
+索引檔裡存了模型名與維度，對不上就當作沒有快取、整個重建。不同模型的向量
+空間不相通，拿舊索引硬算出來的相似度是**沒有意義的數字，而且不會報錯**——
+所以寧可重算。
+
+### 只吃職缺 PDF，不是通用文件載入器
+
+這是刻意的。整個檢索設計都綁在職缺的結構上——`group` 是代號、facets 從地點與
+工作性質推出來、`label` 以代號開頭、`SYSTEM` 要求模型附上代號。丟一份通用
+Markdown 進來會產生沒有代號也沒有 facets 的塊，那些契約會整個垮掉。要支援通用
+文件是另一個設計題，不是多加一個 loader。
+
+### 為什麼不是 Chroma
+
+140 塊的規模下 numpy 全掃是微秒級，Chroma 的價值要到十萬塊以上。而它有一個對
+這個專案很痛的限制：**metadata 只吃 str/int/float/bool，不支援 list**。這裡的
+facets 全部是多值的（`city: ["台北","新竹"]`），進 Chroma 就得攤平成
+`city_台北=True` 這種布林欄，`derive()` 與 `match()` 都要改寫——那是整個專案最
+有價值也最脆弱的一塊。
+
+所以抽了一層 `VectorStore` 介面、先用 numpy 實作。語料真的長到需要 HNSW 時多一個
+子類就好，上層不用動；但屆時要記得處理 facets 攤平的問題。
+
 ## 測試與 lint
 
 ```bash
-python -m pytest          # 179 個測試，約 2 秒
+python -m pytest          # 220 個測試，約 3 秒
 python -m ruff check .    # lint
 pre-commit install        # 裝一次，之後每次 commit 自動跑上面兩項
 ```
@@ -382,13 +452,15 @@ pre-commit install        # 裝一次，之後每次 commit 自動跑上面兩�
 | 檔案 | 測什麼 | 怎麼避開外部依賴 |
 |------|--------|-----------------|
 | `test_facets.py` | 正規化與查詢條件抽取 | 純函式，本來就沒有依賴 |
-| `test_build_jobs.py` | PDF 文字清理、切塊、欄位解析 | 假的 PDF 物件 |
-| `test_retriever.py` | 檢索邏輯：去重、門檻、過濾放寬 | 分數由字典指定的假檢索器 |
+| `test_ingest.py` | PDF 文字清理、切塊、欄位解析 | 假的 PDF 物件 |
+| `test_retriever.py` | 檢索邏輯：去重、門檻、過濾放寬、增量同步 | 分數由字典指定的假檢索器 |
 | `test_chat_bot.py` | 編排：prompt 組裝、history 回滾、短路、串流 | 假的 `BaseLLM` 子類 |
 | `test_llm.py` | 各家的線路格式轉換、`usage`、錯誤翻譯、串流 | 假 client／換掉 `requests.post` |
 | `test_settings.py` | 預設值、環境變數覆寫、型別轉換 | `_env_file=None` 不讀本機 `.env` |
 | `test_api.py` | 端點：驗證、`Doc`→`Source`、狀態碼、無狀態、SSE 事件 | `dependency_overrides` 換掉整個 bot |
 | `test_api_client.py` | 客戶端：請求形狀、錯誤訊息可不可讀 | 換掉 `requests.request` |
+| `test_store.py` | 向量層：增刪對齊、持久化、換模型要重算 | 純陣列，沒有依賴 |
+| `test_registry.py` | 登記簿：同名更新、精準刪除、批次撈 chunks | 暫存 SQLite |
 | `test_knowledge.py` | `Doc` 預設值、`import` 不讀檔 | — |
 | `test_corpus.py` | 對真實 `jobs.json` 的筆數回歸 | 過濾是 facet 決定的，不需要算向量 |
 
