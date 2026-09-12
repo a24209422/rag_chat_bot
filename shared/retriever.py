@@ -54,6 +54,12 @@ class BaseRetriever:
             self._doc_vecs = self._build_doc_vecs()
         return self._doc_vecs
 
+    @property
+    def indexed(self):
+        """索引算好了沒。給 /health 與預熱用——建構出 Retriever 不代表
+        索引就算好了，這兩件事的成本差好幾個數量級。"""
+        return self._doc_vecs is not None
+
     # ── 子類負責的部分 ──────────────────────────────────────────────
     def embed(self, texts, task_type):
         """task_type 是 "RETRIEVAL_QUERY" 或 "RETRIEVAL_DOCUMENT"。

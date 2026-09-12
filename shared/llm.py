@@ -37,6 +37,32 @@ class Reply:
     usage: Usage
 
 
+class Stream:
+    """串流回覆。
+
+    迭代它會吐出一段一段的文字；**跑完之後** .text 與 .usage 才有值——
+    兩家都是最後一個 chunk 才帶 usage，所以不可能在開始迭代前就問到。
+
+    子類餵進來的是 (文字片段或 None, usage 或 None) 的序列：
+    有些 chunk 只有文字、最後一個可能只有 usage。
+    """
+
+    def __init__(self, pieces):
+        self._pieces = pieces
+        self.text = ""
+        self.usage = Usage()
+        self.done = False
+
+    def __iter__(self):
+        for piece, usage in self._pieces:
+            if usage is not None:
+                self.usage = usage          # 取最後一個有值的
+            if piece:
+                self.text += piece
+                yield piece
+        self.done = True
+
+
 class BaseLLM:
     """子類要實作 complete()。
 
@@ -48,6 +74,15 @@ class BaseLLM:
 
     def complete(self, messages, system, temperature=0.2) -> Reply:
         raise NotImplementedError
+
+    def stream(self, messages, system, temperature=0.2) -> Stream:
+        """預設實作：不支援串流的 provider 就一次回完，包成單一片段。
+
+        這樣上層永遠可以走串流那條路，不必問「這家支援嗎」——
+        體驗差一點（要等全部生完），但不會壞。
+        """
+        reply = self.complete(messages, system, temperature)
+        return Stream(iter([(reply.text, reply.usage)]))
 
     def explain(self, exc):
         """把這家「可以預期會發生」的錯誤翻成一句人話，不認得就回 None。

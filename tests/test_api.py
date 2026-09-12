@@ -4,13 +4,16 @@
 這一層要驗的是 HTTP 的事——參數驗證、Doc → Source 的轉換、例外翻成哪個
 狀態碼、以及「伺服器不記 history」這件事。
 """
+import json
+
 import pytest
 from fastapi.testclient import TestClient
 
 from api.deps import get_bot_factory
 from api.main import app
+from shared.chat_bot import Turn
 from shared.knowledge import Doc
-from shared.llm import Usage
+from shared.llm import Stream, Usage
 
 
 class FakeBot:
@@ -203,15 +206,145 @@ def test_health不會把還沒用到的那一邊建起來(monkeypatch):
     from api import deps
 
     built = []
-    monkeypatch.setattr(deps.providers, "chat_for", lambda side: built.append(side))
+
+    def fake_chat_for(side):
+        built.append(side)
+        return FakeBotWithIndex(indexed=True)
+
+    monkeypatch.setattr(deps.providers, "chat_for", fake_chat_for)
     monkeypatch.setattr(deps, "_bots", {})
 
     assert deps.loaded() == []
+    deps.loaded()
+    deps.loaded()
     assert built == []                      # 查了三次也沒建任何東西
-    deps.loaded()
-    deps.loaded()
-    assert built == []
 
     deps.bot_for("cloud")                   # 真的要用才建
     assert built == ["cloud"]
     assert deps.loaded() == ["cloud"]
+
+
+def test_loaded回報的是索引算好了不是物件建好了(monkeypatch):
+    """建 ChatBot 幾乎不花時間，算索引才是貴的（地端實測 47 秒）。
+    /health 講「已載入」如果只代表前者，那句話沒有意義——
+    而且會讓人以為 API_WARM 生效了，其實沒有。"""
+    from api import deps
+
+    monkeypatch.setattr(deps, "_bots", {"cloud": FakeBotWithIndex(indexed=False)})
+    assert deps.loaded() == []              # 物件在了，但索引還沒算
+
+    deps._bots["cloud"].retriever.indexed = True
+    assert deps.loaded() == ["cloud"]
+
+
+class FakeBotWithIndex:
+    def __init__(self, indexed):
+        self.retriever = type("R", (), {"indexed": indexed})()
+
+
+# ══ /chat/stream ══════════════════════════════════════════════════════
+def sse_events(text):
+    """把回應本文拆成 [(事件名, 資料)]。"""
+    out, event = [], None
+    for line in text.splitlines():
+        if line.startswith("event: "):
+            event = line[7:]
+        elif line.startswith("data: ") and event:
+            out.append((event, json.loads(line[6:])))
+            event = None
+    return out
+
+
+class FakeStreamBot(FakeBot):
+    """ask_stream 用真的 Turn，這樣測到的是實際會跑的那份程式。"""
+
+    def __init__(self, pieces=("好", "的"), error_at=None, **kw):
+        super().__init__(**kw)
+        self.pieces, self.error_at = list(pieces), error_at
+
+    def ask_stream(self, question, history, k=None):
+        self.calls.append({"question": question, "history": list(history), "k": k})
+        if self.error:
+            raise self.error
+        history.append({"role": "user", "content": question})
+        pieces, error_at = self.pieces, self.error_at
+
+        def gen():
+            for i, p in enumerate(pieces):
+                if error_at is not None and i == error_at:
+                    raise RuntimeError("串到一半壞了")
+                yield p, None
+            yield None, self.usage
+
+        return Turn(self.hits, stream=Stream(gen()), history=history)
+
+
+def test_串流的事件順序(client):
+    use(FakeStreamBot(hits=[hit("MAT-04", 0.91)], pieces=("資料", "裡有"),
+                      usage=Usage(2764, 78)))
+
+    r = client.post("/chat/stream", json={"question": "q", "side": "onperm"})
+
+    assert r.status_code == 200
+    assert r.headers["content-type"] == "text/event-stream; charset=utf-8"
+    events = sse_events(r.text)
+    assert [e for e, _ in events] == ["sources", "token", "token", "done"]
+
+    assert events[0][1]["sources"] == [{"code": "MAT-04",
+                                        "label": "MAT-04 · 公司 · 職缺", "score": 0.91}]
+    assert [d["text"] for _, d in events[1:3]] == ["資料", "裡有"]
+    assert events[-1][1]["usage"] == {"prompt": 2764, "output": 78}
+    assert events[-1][1]["history"][-1] == {"role": "assistant", "content": "資料裡有"}
+
+
+def test_sources是第一個事件(client):
+    """檢索比生成快得多。前端可以先把來源列出來，不必等模型講完。"""
+    use(FakeStreamBot(hits=[hit("A-01")], pieces=("一", "二", "三")))
+
+    events = sse_events(client.post("/chat/stream", json={"question": "q"}).text)
+
+    assert events[0][0] == "sources"
+
+
+def test_中文不會變成latin1亂碼(client):
+    """SSE 的 Content-Type 若沒宣告 charset，HTTP 規定 text/* 退回 ISO-8859-1。
+    所以伺服器一定要宣告——實測 requests 就是照規定猜的。"""
+    use(FakeStreamBot(pieces=("耐能智慧", "在徵人")))
+
+    r = client.post("/chat/stream", json={"question": "q"})
+
+    assert "charset=utf-8" in r.headers["content-type"]
+    assert [d["text"] for e, d in sse_events(r.text) if e == "token"] == ["耐能智慧",
+                                                                          "在徵人"]
+
+
+def test_生成中途壞掉要用error事件回報(client):
+    """這時 HTTP 狀態早就送出去了（200），改不了。呼叫端一定要處理這個事件，
+    不然畫面會停在半截答案上。"""
+    use(FakeStreamBot(pieces=("一", "二", "三"), error_at=2,
+                      explain="llama.cpp server 沒開。"))
+
+    r = client.post("/chat/stream", json={"question": "q"})
+
+    assert r.status_code == 200             # 標頭早就送出去了
+    events = sse_events(r.text)
+    assert [e for e, _ in events] == ["sources", "token", "token", "error"]
+    assert events[-1][1]["detail"] == "llama.cpp server 沒開。"
+
+
+def test_連線階段的錯誤仍然是正確的狀態碼(client):
+    """先預抽第一段，抽得出來才開始串流——所以 503 不會偽裝成 200。"""
+    err = RuntimeError("quota")
+    err.code = 429
+    use(FakeStreamBot(error=err, explain="已達用量上限。"))
+
+    r = client.post("/chat/stream", json={"question": "q"})
+
+    assert r.status_code == 429
+    assert r.json()["detail"] == "已達用量上限。"
+
+
+@pytest.mark.parametrize("body", [{"question": ""}, {"question": "q", "side": "gcp"}])
+def test_串流端點的參數驗證也是422(client, body):
+    use(FakeStreamBot())
+    assert client.post("/chat/stream", json=body).status_code == 422

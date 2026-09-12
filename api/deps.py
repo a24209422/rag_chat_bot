@@ -36,11 +36,13 @@ def bot_for(side):
 
 
 def loaded():
-    """已經建好的那幾邊。給 /health 用，順便看得出預熱有沒有生效。
+    """索引已經算好的那幾邊。給 /health 用，順便看得出預熱有沒有生效。
 
-    只是查表，不會把沒載入的建起來。
+    回報的是「索引算好了」而不是「物件建好了」——後者幾乎不花時間，
+    講出來沒有意義。只是查表，不會把沒載入的建起來。
     """
-    return [s for s in providers.SIDES if s in _bots]
+    return [s for s in providers.SIDES
+            if s in _bots and _bots[s].retriever.indexed]
 
 
 def get_bot_factory():

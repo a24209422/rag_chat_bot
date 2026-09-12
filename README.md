@@ -283,8 +283,12 @@ streamlit run cloud_app.py         # 另開一個終端
 
 | 方法 | 路徑 | 說明 |
 |---|---|---|
-| GET | `/health` | 健康檢查，附帶「哪幾邊已經建好索引」 |
-| POST | `/chat` | 檢索 + 生成。`side` 選 `cloud` 或 `onperm` |
+| GET | `/health` | 健康檢查，附帶「哪幾邊的索引已經算好」 |
+| POST | `/chat` | 檢索 + 生成，一次回完 |
+| POST | `/chat/stream` | 同上，但用 SSE 逐段吐字 |
+
+兩個聊天端點吃同一組參數（`question`、`history`、`side`、`k`），也走同一份
+`ChatBot`——差別只在回應怎麼送。
 
 ```bash
 curl -X POST http://localhost:8000/chat -H "Content-Type: application/json"      -d '{"question":"...","side":"onperm"}'
@@ -302,6 +306,35 @@ curl -X POST http://localhost:8000/chat -H "Content-Type: application/json"     
 ```
 
 `code` 是獨立欄位而不是埋在 `reply` 的散文裡——[完整的清單由程式給，不是模型](#完整的清單由程式給不是模型)。
+
+### 串流
+
+`POST /chat/stream` 回的是 SSE，四種事件：
+
+| 事件 | 內容 | 時機 |
+|---|---|---|
+| `sources` | 檢索結果 | **第一個送**。檢索比生成快得多，前端可以先把來源列出來 |
+| `token` | 一段文字 | 模型每吐一段 |
+| `done` | `usage` 與更新後的 `history` | 正常結束 |
+| `error` | 人話的錯誤訊息 | 生成中途壞掉 |
+
+實測（本機 Qwen2.5-3B）：來源 2.6 秒就到，首段同時，全文 4.4 秒 76 段。
+
+**連線階段的錯誤仍然是正常的 HTTP 狀態碼。** 端點會先「預抽」第一段，抽得出來才
+開始串流——代價是 `sources` 要等模型吐第一個字（實測 0.2 秒），換到的是 503／429
+不會偽裝成 200。抽出來之後就沒辦法再改狀態碼了，所以那之後的失敗只能用 `error`
+事件回報；**呼叫端一定要處理這個事件**，不然畫面會停在半截答案上。
+
+### 串流踩到的兩個編碼坑
+
+兩個都是「不會報錯、只會默默變成亂碼或 0」的那種：
+
+- **`Content-Type` 一定要宣告 `charset=utf-8`。** SSE 是 `text/event-stream`，
+  HTTP 對 `text/*` 的規定是沒宣告就退回 ISO-8859-1，`requests` 照做——中文會變成
+  `'å¥½ç'`。伺服器端有宣告，客戶端仍再設一次當保險。
+- **llama.cpp 在 `stream=True` 時預設不回 `usage`**，要明確加
+  `stream_options: {"include_usage": true}` 才給。跟非串流那條路不一樣，
+  忘了加就是 token 數永遠 0。
 
 ### 後端不記 history
 
@@ -328,13 +361,18 @@ curl -X POST http://localhost:8000/chat -H "Content-Type: application/json"     
 ### 索引什麼時候建
 
 預設是「第一次用到那一邊才建」——只用雲端的人不該在啟動時等地端載 e5。
-要預熱就設 `API_WARM=cloud` 或 `API_WARM=cloud,onperm`，`/health` 的
-`loaded` 看得出有沒有生效。
+要預熱就設 `API_WARM=cloud` 或 `API_WARM=cloud,onperm`。
+
+預熱會**真的把索引算出來**，不只是把物件建起來——後者幾乎不花時間，講出來
+沒有意義。實測地端第一個請求：沒預熱 47.6 秒，預熱後 2.6 秒。
+
+`/health` 的 `loaded` 回報的也是「索引算好了」而不是「物件建好了」，
+所以看得出預熱有沒有生效。
 
 ## 測試與 lint
 
 ```bash
-python -m pytest          # 150 個測試，約 3 秒
+python -m pytest          # 179 個測試，約 2 秒
 python -m ruff check .    # lint
 pre-commit install        # 裝一次，之後每次 commit 自動跑上面兩項
 ```
@@ -346,10 +384,10 @@ pre-commit install        # 裝一次，之後每次 commit 自動跑上面兩�
 | `test_facets.py` | 正規化與查詢條件抽取 | 純函式，本來就沒有依賴 |
 | `test_build_jobs.py` | PDF 文字清理、切塊、欄位解析 | 假的 PDF 物件 |
 | `test_retriever.py` | 檢索邏輯：去重、門檻、過濾放寬 | 分數由字典指定的假檢索器 |
-| `test_chat_bot.py` | 編排：prompt 組裝、history 回滾、短路 | 假的 `BaseLLM` 子類 |
-| `test_llm.py` | 各家的線路格式轉換、`usage`、錯誤翻譯 | 假 client／換掉 `requests.post` |
+| `test_chat_bot.py` | 編排：prompt 組裝、history 回滾、短路、串流 | 假的 `BaseLLM` 子類 |
+| `test_llm.py` | 各家的線路格式轉換、`usage`、錯誤翻譯、串流 | 假 client／換掉 `requests.post` |
 | `test_settings.py` | 預設值、環境變數覆寫、型別轉換 | `_env_file=None` 不讀本機 `.env` |
-| `test_api.py` | 端點：驗證、`Doc`→`Source`、例外翻成狀態碼、無狀態 | `dependency_overrides` 換掉整個 bot |
+| `test_api.py` | 端點：驗證、`Doc`→`Source`、狀態碼、無狀態、SSE 事件 | `dependency_overrides` 換掉整個 bot |
 | `test_api_client.py` | 客戶端：請求形狀、錯誤訊息可不可讀 | 換掉 `requests.request` |
 | `test_knowledge.py` | `Doc` 預設值、`import` 不讀檔 | — |
 | `test_corpus.py` | 對真實 `jobs.json` 的筆數回歸 | 過濾是 facet 決定的，不需要算向量 |

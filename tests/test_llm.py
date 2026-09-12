@@ -3,12 +3,14 @@
 這一層是 Stage 2 新增的。在它之前，這些轉換散在兩個 ChatBot 裡跟編排邏輯
 混在一起，沒辦法單獨測；現在每家就是一個小類別，一組輸入對一組輸出。
 """
+import json
+
 import pytest
 import requests
 
 from cloud.llm import GeminiLLM
 from onperm.llm import LlamaCppLLM
-from shared.llm import BaseLLM, Usage
+from shared.llm import BaseLLM, Reply, Stream, Usage
 
 NEUTRAL = [{"role": "user", "content": "第一題"},
            {"role": "assistant", "content": "第一答"},
@@ -174,3 +176,121 @@ def test_llamacpp_翻譯連線失敗():
     assert "9999" in llm.explain(requests.exceptions.ConnectionError())
     assert "載入" in llm.explain(requests.exceptions.Timeout())
     assert llm.explain(ValueError("誰知道")) is None
+
+
+# ══ 串流 ══════════════════════════════════════════════════════════════
+def test_stream累積文字並取最後一個usage():
+    """usage 只在最後一個 chunk 才知道——兩家都是。所以不可能在開始迭代
+    之前就問到，只能一路取「最後一個有值的」。"""
+    s = Stream(iter([("好", None), ("的", None), (None, Usage(35, 2))]))
+    assert list(s) == ["好", "的"]          # 只有 usage 的那段不吐文字
+    assert s.text == "好的"
+    assert s.usage == Usage(35, 2)
+    assert s.done
+
+
+def test_base的stream預設退回complete():
+    """不支援串流的 provider 也要能走串流那條路——體驗差一點（要等全部
+    生完），但上層不必問「這家支援嗎」。"""
+    class OnlyComplete(BaseLLM):
+        def complete(self, messages, system, temperature=0.2):
+            return Reply("一次回完", Usage(7, 3))
+
+    s = OnlyComplete().stream([], system="s")
+    assert list(s) == ["一次回完"]
+    assert s.usage == Usage(7, 3)
+
+
+def test_gemini_串流的線路格式跟非串流一致():
+    class FakeChunk:
+        def __init__(self, text, usage=None):
+            self.text, self.usage_metadata = text, usage
+
+    class StreamingClient(FakeGeminiClient):
+        def generate_content_stream(self, model=None, contents=None, config=None):
+            self.seen = {"model": model, "contents": contents, "config": config}
+            return iter([FakeChunk("好"), FakeChunk("的", FakeUsageMeta(100, 50, 30))])
+
+    client = StreamingClient()
+    s = GeminiLLM(client=client).stream(NEUTRAL, system="系統指令")
+
+    assert list(s) == ["好", "的"]
+    assert s.usage == Usage(100, 80)        # 含思考 token
+    assert client.seen["contents"][1]["role"] == "model"      # assistant → model
+    assert client.seen["config"].system_instruction == "系統指令"
+
+
+class FakeStreamResponse:
+    def __init__(self, lines):
+        self._lines = lines
+        self.encoding = "ISO-8859-1"        # requests 對 text/* 的預設猜法
+        self.raised = False
+
+    def raise_for_status(self):
+        self.raised = True
+
+    def iter_lines(self, decode_unicode=False):
+        return iter(self._lines)
+
+
+def sse_lines(*payloads):
+    out = []
+    for p in payloads:
+        out += [f"data: {json.dumps(p, ensure_ascii=False)}", ""]
+    return out + ["data: [DONE]"]
+
+
+def test_llamacpp_串流一定要開include_usage(monkeypatch):
+    """實測：stream=True 時 llama.cpp 預設不回 usage，要明確要求才給——
+    跟非串流那條路不一樣。忘了加就是 usage 永遠 0，而且不會報錯。"""
+    box = {}
+
+    def fake_post(url, json=None, timeout=None, stream=False):
+        box.update(json=json, stream=stream)
+        return FakeStreamResponse(sse_lines({"choices": [{"delta": {"content": "好"}}]}))
+
+    monkeypatch.setattr(requests, "post", fake_post)
+    list(LlamaCppLLM().stream(NEUTRAL, system="s"))
+
+    assert box["json"]["stream"] is True
+    assert box["json"]["stream_options"] == {"include_usage": True}
+    assert box["stream"] is True            # requests 也要知道，不然它會整個緩衝
+
+
+def test_llamacpp_串流要把編碼設成utf8(monkeypatch):
+    """SSE 的 Content-Type 沒宣告 charset，HTTP 規定 text/* 退回 ISO-8859-1，
+    requests 照做——中文會變成 latin-1 亂碼，而且完全不報錯。"""
+    resp = FakeStreamResponse(sse_lines({"choices": [{"delta": {"content": "好"}}]}))
+    monkeypatch.setattr(requests, "post", lambda *a, **k: resp)
+
+    list(LlamaCppLLM().stream(NEUTRAL, system="s"))
+
+    assert resp.encoding == "utf-8"
+    assert resp.raised                      # 也要檢查狀態碼
+
+
+def test_llamacpp_串流解析(monkeypatch):
+    lines = sse_lines(
+        {"choices": [{"delta": {"content": "好"}}]},
+        {"choices": [{"delta": {"content": "的"}}]},
+        {"choices": [{"delta": {}}], "usage": {"prompt_tokens": 35,
+                                               "completion_tokens": 2}},
+    )
+    monkeypatch.setattr(requests, "post",
+                        lambda *a, **k: FakeStreamResponse(lines))
+
+    s = LlamaCppLLM().stream(NEUTRAL, system="s")
+
+    assert list(s) == ["好", "的"]
+    assert s.text == "好的"
+    assert s.usage == Usage(35, 2)
+
+
+def test_llamacpp_串流沒有usage也不能壞(monkeypatch):
+    monkeypatch.setattr(requests, "post", lambda *a, **k: FakeStreamResponse(
+        sse_lines({"choices": [{"delta": {"content": "好"}}]})))
+
+    s = LlamaCppLLM().stream(NEUTRAL, system="s")
+
+    assert list(s) == ["好"]
+    assert s.usage == Usage(0, 0)

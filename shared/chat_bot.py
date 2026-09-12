@@ -12,6 +12,42 @@ NOT_FOUND = "資料裡沒有。"     # 措辭跟 SYSTEM 一致，兩條路說法
 FULL_TEXT_LIMIT = 5           # 超過這個數量就只給 label，不給完整職缺
 
 
+class Turn:
+    """串流的一輪對話。
+
+    hits 馬上就有（檢索先跑完），所以 UI 可以在模型還沒吐字之前就把來源
+    列出來。文字要迭代這個物件才會一段一段出來；跑完之後 reply 與 usage
+    才有值——usage 只在最後一個 chunk 才知道。
+    """
+
+    def __init__(self, hits, stream=None, history=None, reply=None):
+        self.hits = hits
+        self.reply = reply
+        self.usage = Usage()
+        self._stream = stream
+        self._history = history
+        self.done = stream is None        # 短路那條路建出來就是完成狀態
+
+    def __iter__(self):
+        if self.done:
+            if self.reply:
+                yield self.reply          # 短路：一次吐完那一句
+            return
+
+        try:
+            yield from self._stream
+        except Exception:
+            if self._history is not None:
+                self._history.pop()       # 中途斷掉，把問題收回去
+            raise
+
+        self.reply = self._stream.text
+        self.usage = self._stream.usage
+        if self._history is not None:
+            self._history.append({"role": "assistant", "content": self.reply})
+        self.done = True
+
+
 class ChatBot:
     """history 是中性格式：[{"role": "user"|"assistant", "content": str}]。
 
@@ -28,24 +64,10 @@ class ChatBot:
         self.temperature = temperature if temperature is not None else cfg.temperature
 
     def ask(self, user, history, k=None):
-        """回傳 (reply, hits, usage)。"""
-        hits = self.retriever.retrieve(user, k=k if k is not None else self.k)
-
-        if not hits and not history:
-            # 第一句就離題才短路；有上下文的話（「那薪水呢？」這種跟隨問句
-            # 檢索分數本來就低）交給模型判斷，短路會誤殺。
-            history.append({"role": "user", "content": user})
-            history.append({"role": "assistant", "content": NOT_FOUND})
-            return NOT_FOUND, hits, Usage()       # 沒打生成，就不該記任何 token
-
-        prompt = f"【資料】\n{self._context(hits)}\n\n【問題】\n{user}"
-
-        history.append({"role": "user", "content": user})     # 歷史存乾淨的
-        if self.history_limit and len(history) > self.history_limit:
-            del history[:-self.history_limit]
-
-        to_send = list(history)                               # ← 分離送出的版本
-        to_send[-1] = {"role": "user", "content": prompt}     # 只有這一輪帶【資料】
+        """一次回完。回傳 (reply, hits, usage)。"""
+        hits, to_send = self._prepare(user, history, k)
+        if to_send is None:                       # 離題短路，沒打生成
+            return NOT_FOUND, hits, Usage()
 
         try:
             reply = self.llm.complete(to_send, system=SYSTEM,
@@ -56,6 +78,49 @@ class ChatBot:
 
         history.append({"role": "assistant", "content": reply.text})
         return reply.text, hits, reply.usage
+
+    def ask_stream(self, user, history, k=None):
+        """逐段回。回傳一個 Turn：先拿得到 hits，迭代它才吐文字。
+
+        history 要等串流「跑完」才補上回答——中途斷掉的話會把問題收回去，
+        跟 ask() 失敗時的行為一致。
+        """
+        hits, to_send = self._prepare(user, history, k)
+        if to_send is None:
+            return Turn(hits, reply=NOT_FOUND)    # 已完成，迭代會吐出那一句
+
+        try:
+            stream = self.llm.stream(to_send, system=SYSTEM,
+                                     temperature=self.temperature)
+        except Exception:
+            history.pop()      # 連線階段就失敗（例如 server 沒開）
+            raise
+        return Turn(hits, stream=stream, history=history)
+
+    def _prepare(self, user, history, k):
+        """兩條路共用的前半段：檢索、決定要不要短路、組 prompt、更新 history。
+
+        回傳 (hits, to_send)。to_send 是 None 代表短路——history 已經補好
+        一問一答，呼叫端不必再做事。
+        """
+        hits = self.retriever.retrieve(user, k=k if k is not None else self.k)
+
+        if not hits and not history:
+            # 第一句就離題才短路；有上下文的話（「那薪水呢？」這種跟隨問句
+            # 檢索分數本來就低）交給模型判斷，短路會誤殺。
+            history.append({"role": "user", "content": user})
+            history.append({"role": "assistant", "content": NOT_FOUND})
+            return hits, None
+
+        prompt = f"【資料】\n{self._context(hits)}\n\n【問題】\n{user}"
+
+        history.append({"role": "user", "content": user})     # 歷史存乾淨的
+        if self.history_limit and len(history) > self.history_limit:
+            del history[:-self.history_limit]
+
+        to_send = list(history)                               # ← 分離送出的版本
+        to_send[-1] = {"role": "user", "content": prompt}     # 只有這一輪帶【資料】
+        return hits, to_send
 
     @staticmethod
     def _context(hits):

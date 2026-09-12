@@ -2,7 +2,7 @@
 from google.genai import types
 
 from cloud.client import make_client
-from shared.llm import BaseLLM, Reply, Usage
+from shared.llm import BaseLLM, Reply, Stream, Usage
 from shared.settings import settings
 
 
@@ -59,3 +59,20 @@ class GeminiLLM(BaseLLM):
             # thoughts 是使用者看不到的內部草稿，但按輸出計費——不加會嚴重低估
             output=(u.candidates_token_count or 0) + (u.thoughts_token_count or 0),
         )
+
+    def stream(self, messages, system, temperature=0.2):
+        def pieces():
+            for chunk in self.client.models.generate_content_stream(
+                model=self.model,
+                contents=[self._wire(m) for m in messages],
+                config=types.GenerateContentConfig(
+                    system_instruction=system,
+                    temperature=temperature,
+                ),
+            ):
+                u = chunk.usage_metadata
+                # usage 取最後一個有值的。Gemini 可能每個 chunk 都帶（累計值）、
+                # 也可能只有最後一個帶——兩種情況這樣寫都對。
+                yield chunk.text, (self._usage(u) if u is not None else None)
+
+        return Stream(pieces())

@@ -3,6 +3,8 @@
 換掉 requests.request，所以不需要真的起一個後端。要驗的是「後端回什麼、
 UI 看到什麼」——尤其是錯誤訊息，因為那是使用者唯一看得到的東西。
 """
+import json
+
 import pytest
 import requests
 
@@ -120,3 +122,113 @@ def test_逾時的訊息要帶秒數(sent):
 
     with pytest.raises(ApiError, match="180 秒"):
         ApiClient(timeout=180).ask("cloud", "q", [])
+
+
+# ══ 串流 ══════════════════════════════════════════════════════════════
+class FakeSSEResponse:
+    def __init__(self, lines, status=200):
+        self._lines = lines
+        self.status_code = status
+        self.encoding = "ISO-8859-1"     # requests 對 text/* 的預設猜法
+        self.text = ""
+
+    def json(self):
+        raise ValueError("串流回應沒有整份 JSON")
+
+    def iter_lines(self, decode_unicode=False):
+        return iter(self._lines)
+
+
+def sse(event, data):
+    return [f"event: {event}", f"data: {json.dumps(data, ensure_ascii=False)}", ""]
+
+
+OK_LINES = (sse("sources", {"sources": [{"code": "MAT-04", "label": "L", "score": 0.9}]})
+            + sse("token", {"text": "資料"})
+            + sse("token", {"text": "裡有"})
+            + sse("done", {"usage": {"prompt": 2764, "output": 78},
+                           "history": [{"role": "user", "content": "q"},
+                                       {"role": "assistant", "content": "資料裡有"}]}))
+
+
+@pytest.fixture
+def streamed(monkeypatch):
+    box = {"response": FakeSSEResponse(OK_LINES)}
+
+    def fake_request(method, url, timeout=None, stream=False, **kw):
+        box.update(method=method, url=url, stream=stream, **kw)
+        resp = box["response"]
+        if isinstance(resp, Exception):
+            raise resp
+        return resp
+
+    monkeypatch.setattr(requests, "request", fake_request)
+    return box
+
+
+def test_串流要告訴requests別緩衝(streamed):
+    """不傳 stream=True 的話 requests 會把整個回應讀完才回來——
+    對串流端點而言那等於「等它全部講完」，逐段吐字完全失效。"""
+    ApiClient().stream("onperm", "q", [])
+
+    assert streamed["stream"] is True
+    assert streamed["url"].endswith("/chat/stream")
+
+
+def test_sources在開始吐字之前就拿得到(streamed):
+    s = ApiClient().stream("onperm", "q", [])
+    assert s.sources == [{"code": "MAT-04", "label": "L", "score": 0.9}]
+    assert s.reply == ""                    # 還沒迭代
+
+
+def test_迭代tokens之後才有reply與usage(streamed):
+    s = ApiClient().stream("onperm", "q", [])
+
+    assert list(s.tokens()) == ["資料", "裡有"]
+    assert s.reply == "資料裡有"
+    assert s.usage == Usage(2764, 78)
+    assert len(s.history) == 2
+
+
+def test_客戶端也要把編碼設成utf8(streamed):
+    resp = FakeSSEResponse(OK_LINES)
+    streamed["response"] = resp
+
+    list(ApiClient().stream("onperm", "q", []).tokens())
+
+    assert resp.encoding == "utf-8"
+
+
+def test_中途的error事件要變成例外(streamed):
+    """不丟例外的話，UI 會以為答案正常結束，停在半截文字上。"""
+    streamed["response"] = FakeSSEResponse(
+        sse("sources", {"sources": []})
+        + sse("token", {"text": "一"})
+        + sse("error", {"detail": "llama.cpp server 沒開。"}))
+
+    s = ApiClient().stream("onperm", "q", [])
+    got = []
+    with pytest.raises(ApiError, match="沒開"):
+        for piece in s.tokens():
+            got.append(piece)
+    assert got == ["一"]
+
+
+def test_一開始就是error事件(streamed):
+    streamed["response"] = FakeSSEResponse(sse("error", {"detail": "壞了"}))
+    with pytest.raises(ApiError, match="壞了"):
+        ApiClient().stream("onperm", "q", [])
+
+
+def test_沒送sources就結束也要丟例外(streamed):
+    streamed["response"] = FakeSSEResponse([])
+    with pytest.raises(ApiError, match="sources"):
+        ApiClient().stream("onperm", "q", [])
+
+
+def test_串流端點的HTTP錯誤仍然照常處理(streamed):
+    streamed["response"] = FakeSSEResponse([], status=429)
+    streamed["response"].json = lambda: {"detail": "已達用量上限。"}
+    with pytest.raises(ApiError, match="用量上限") as e:
+        ApiClient().stream("onperm", "q", [])
+    assert e.value.status == 429

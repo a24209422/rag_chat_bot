@@ -40,24 +40,35 @@ def run(side, title):
     if user := st.chat_input("說點什麼…"):
         st.chat_message("user").write(user)
 
-        err = None
-        with st.spinner("思考中…"):
+        stream = err = None
+        with st.spinner("檢索中…"):
             try:
-                ans = client.ask(side, user, st.session_state.history)
+                # 回來的時候 sources 已經有了——後端第一個送的就是它。
+                # （這裡仍然把來源畫在答案下面，維持跟上面歷史迴圈一致的版面；
+                #   「來源先到」這件事是留給之後的前端用的。）
+                stream = client.stream(side, user, st.session_state.history)
             except ApiError as e:
-                err = e                 # 先接住，離開 spinner 再顯示
+                err = e
 
-        if err:                         # 在 spinner 裡 st.stop() 的話，轉圈會停不下來
+        if stream is not None:
+            with st.chat_message("assistant"):
+                try:
+                    st.write_stream(stream.tokens())
+                except ApiError as e:
+                    # 生成中途壞掉。畫面上已經有半截答案了，所以錯誤要接在
+                    # 它後面顯示，不能取代它。
+                    err = e
+                else:
+                    for s in stream.sources:
+                        st.caption(f"`{s['score']:.3f}` {s['label']}")
+
+        if err:
             st.error(f"✗ {err}")        # 訊息在後端就翻成人話了，直接顯示
         else:
             # 後端回的 history 才是權威版本——它可能就地截短過（地端有上限）。
-            st.session_state.history = ans.history
-            st.session_state.sources += [None, ans.sources]
-            st.session_state.usage += ans.usage
-            with st.chat_message("assistant"):
-                st.write(ans.reply)
-                for s in ans.sources:   # 這次的來源要自己畫，頂端迴圈還看不到它
-                    st.caption(f"`{s['score']:.3f}` {s['label']}")
+            st.session_state.history = stream.history
+            st.session_state.sources += [None, stream.sources]
+            st.session_state.usage += stream.usage
 
             # history 被截短時 sources 要跟著切，不然下一輪的 zip(strict=True) 會炸。
             # 兩者都是一次 append 兩則、history 只從前面砍，取相同長度的尾段就對齊了。

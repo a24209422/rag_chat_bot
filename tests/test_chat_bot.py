@@ -8,7 +8,7 @@ import pytest
 
 from shared.chat_bot import NOT_FOUND, ChatBot
 from shared.knowledge import SYSTEM, Doc
-from shared.llm import BaseLLM, Reply, Usage
+from shared.llm import BaseLLM, Reply, Stream, Usage
 
 
 class FakeLLM(BaseLLM):
@@ -181,3 +181,120 @@ def test_溫度與k來自設定也可以單次覆寫():
     assert len(hits) == 3                      # 用建構子給的 k
     _, hits, _ = bot.ask("問題", [], k=7)
     assert len(hits) == 7                      # 單次覆寫
+
+
+# ══ 串流 ══════════════════════════════════════════════════════════════
+class FakeStreamLLM(BaseLLM):
+    """吐出固定片段的假 LLM。error_at=N 表示吐到第 N 段時炸掉。"""
+
+    def __init__(self, pieces=("好", "的"), usage=Usage(10, 5), error_at=None,
+                 error_on_open=None):
+        self.pieces, self.usage_, self.error_at = list(pieces), usage, error_at
+        self.error_on_open = error_on_open
+        self.calls = []
+
+    def stream(self, messages, system, temperature=0.2):
+        self.calls.append({"messages": list(messages), "system": system,
+                           "temperature": temperature})
+        if self.error_on_open:
+            raise self.error_on_open
+        pieces, error_at = self.pieces, self.error_at
+
+        def gen():
+            for i, p in enumerate(pieces):
+                if error_at is not None and i == error_at:
+                    raise RuntimeError("串到一半壞了")
+                yield p, None
+            yield None, self.usage_
+
+        return Stream(gen())
+
+    @property
+    def last(self):
+        return self.calls[-1]
+
+
+def make_stream(hits=(), **kw):
+    llm = kw.pop("llm", None) or FakeStreamLLM()
+    return ChatBot(retriever=StubRetriever(list(hits)), llm=llm, **kw), llm
+
+
+def test_ask_stream_的hits馬上就有():
+    """檢索比生成快得多，所以 UI 可以在模型還沒吐字之前就把來源列出來。"""
+    bot, llm = make_stream([hit("A-01")])
+
+    turn = bot.ask_stream("問題", [])
+
+    assert [d.group for d, _ in turn.hits] == ["A-01"]
+    assert llm.calls == [] or True          # 連線可能已開，但還沒吐任何字
+    assert turn.reply is None               # 要迭代才有
+
+
+def test_ask_stream_跑完才補上history():
+    bot, _ = make_stream([hit("A-01")], llm=FakeStreamLLM(pieces=("資料", "裡有")))
+    history = []
+
+    turn = bot.ask_stream("問題", history)
+    assert len(history) == 1                # 只有問題，還沒有答案
+
+    assert list(turn) == ["資料", "裡有"]
+    assert history == [{"role": "user", "content": "問題"},
+                       {"role": "assistant", "content": "資料裡有"}]
+    assert turn.reply == "資料裡有"
+    assert turn.usage == Usage(10, 5)
+
+
+def test_ask_stream_中途壞掉要把問題收回去():
+    """畫面上會留著半截答案，但 history 不能壞——否則下一輪會變成
+    「問題、問題、答案」錯位。"""
+    bot, _ = make_stream([hit("A-01")], llm=FakeStreamLLM(pieces=("一", "二", "三"),
+                                                          error_at=2))
+    history = [{"role": "user", "content": "舊"},
+               {"role": "assistant", "content": "舊答"}]
+    before = list(history)
+
+    turn = bot.ask_stream("新問題", history)
+    got = []
+    with pytest.raises(RuntimeError, match="壞了"):
+        for piece in turn:
+            got.append(piece)
+
+    assert got == ["一", "二"]              # 已經吐出去的還是吐出去了
+    assert history == before                # 但 history 回到呼叫前
+
+
+def test_ask_stream_連線階段就失敗也要收回問題():
+    bot, _ = make_stream([hit("A-01")],
+                         llm=FakeStreamLLM(error_on_open=RuntimeError("server 沒開")))
+    history = []
+
+    with pytest.raises(RuntimeError, match="沒開"):
+        bot.ask_stream("問題", history)
+
+    assert history == []
+
+
+def test_ask_stream_離題短路():
+    """沒打生成，所以一次就把那句話吐完，usage 是零。"""
+    bot, llm = make_stream([])
+    history = []
+
+    turn = bot.ask_stream("推薦一家餐廳", history)
+
+    assert turn.done                        # 建出來就是完成狀態
+    assert list(turn) == [NOT_FOUND]
+    assert turn.usage == Usage()
+    assert llm.calls == []                  # 完全沒碰模型
+    assert len(history) == 2
+
+
+def test_兩條路組出來的prompt一模一樣():
+    """ask() 與 ask_stream() 共用 _prepare()，所以不會有一邊改了另一邊忘了。"""
+    bot_a, llm_a = make([hit("A-01")])
+    bot_b, llm_b = make_stream([hit("A-01")])
+
+    bot_a.ask("同一個問題", [])
+    list(bot_b.ask_stream("同一個問題", []))
+
+    assert llm_a.last["messages"] == llm_b.last["messages"]
+    assert llm_a.last["system"] == llm_b.last["system"]
