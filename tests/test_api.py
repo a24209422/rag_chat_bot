@@ -488,3 +488,14 @@ def test_health會報告塊數與文件數(client, parsed):
     body = client.get("/health").json()
     assert body["documents"] == 1
     assert body["chunks"] == {}               # 這個測試沒有任何一邊被載入
+
+
+def test_cors允許前端的來源(client, parsed):
+    """React 是從瀏覽器打 API 的，沒有這個會被擋下來——而且錯誤只出現在
+    devtools 的 console，後端日誌什麼都看不到。"""
+    r = client.options("/chat", headers={
+        "Origin": "http://localhost:5173",
+        "Access-Control-Request-Method": "POST",
+    })
+    assert r.status_code == 200
+    assert r.headers["access-control-allow-origin"] == "http://localhost:5173"

@@ -1,0 +1,241 @@
+/* 全域樣式。用 CSS 變數而不是 Tailwind——這個規模用不到一整套 utility class，
+   而且少一層 build 外掛。亮/暗跟著系統走。 */
+:root {
+  --bg: #f6f7f9;
+  --panel: #ffffff;
+  --border: #e2e5ea;
+  --text: #1b1f24;
+  --muted: #6b7280;
+  --accent: #2563eb;
+  --accent-soft: #eff4ff;
+  --user-bg: #2563eb;
+  --user-text: #ffffff;
+  --danger: #b42318;
+  --danger-soft: #fef3f2;
+  --radius: 10px;
+  color-scheme: light;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #14161a;
+    --panel: #1c1f24;
+    --border: #2c3037;
+    --text: #e8eaed;
+    --muted: #9aa2ae;
+    --accent: #6ea8fe;
+    --accent-soft: #1e2836;
+    --user-bg: #2f5fd0;
+    --user-text: #ffffff;
+    --danger: #ff9b91;
+    --danger-soft: #3a1d1a;
+    color-scheme: dark;
+  }
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font: 15px/1.6 "Noto Sans TC", "Microsoft JhengHei", system-ui, -apple-system, sans-serif;
+}
+
+button {
+  font: inherit;
+  cursor: pointer;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--panel);
+  color: var(--text);
+  padding: 6px 12px;
+}
+button:hover:not(:disabled) { border-color: var(--accent); }
+button:disabled { opacity: 0.5; cursor: not-allowed; }
+
+/* ── 版面 ────────────────────────────────────────────────────────── */
+.app {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 320px;
+  gap: 16px;
+  max-width: 1180px;
+  margin: 0 auto;
+  padding: 16px;
+  height: 100vh;
+}
+@media (max-width: 860px) {
+  .app { grid-template-columns: 1fr; height: auto; }
+}
+
+.panel {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.chat { overflow: hidden; }
+
+.chat-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border);
+}
+.chat-header h1 { font-size: 16px; margin: 0; flex: 1; }
+
+.viewport {
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.empty {
+  margin: auto;
+  text-align: center;
+  color: var(--muted);
+  max-width: 420px;
+}
+.empty p { margin: 6px 0; }
+.empty code { background: var(--accent-soft); padding: 1px 5px; border-radius: 4px; }
+
+/* ── 訊息 ────────────────────────────────────────────────────────── */
+.msg { display: flex; flex-direction: column; gap: 6px; max-width: 88%; }
+.msg.user { align-self: flex-end; align-items: flex-end; }
+
+.bubble {
+  padding: 9px 13px;
+  border-radius: var(--radius);
+  white-space: pre-wrap;
+  word-break: break-word;
+  border: 1px solid var(--border);
+}
+.msg.user .bubble {
+  background: var(--user-bg);
+  color: var(--user-text);
+  border-color: transparent;
+}
+.msg.assistant .bubble { background: var(--bg); }
+
+.caret::after {
+  content: "▌";
+  color: var(--accent);
+  animation: blink 1s steps(2) infinite;
+}
+@keyframes blink { 50% { opacity: 0; } }
+
+/* 來源列：真正可靠的完整清單。模型的散文只當摘要看——實測 3B 模型被要求
+   列 20 筆時只列得出 16~17 筆，而且常常不附代號。 */
+.sources { display: flex; flex-direction: column; gap: 3px; }
+.source {
+  display: flex;
+  gap: 8px;
+  font-size: 12.5px;
+  color: var(--muted);
+  align-items: baseline;
+}
+.source .score {
+  font-variant-numeric: tabular-nums;
+  color: var(--accent);
+  background: var(--accent-soft);
+  border-radius: 4px;
+  padding: 0 5px;
+  flex: none;
+}
+
+.error {
+  background: var(--danger-soft);
+  color: var(--danger);
+  border: 1px solid currentColor;
+  border-radius: 8px;
+  padding: 8px 12px;
+  font-size: 13.5px;
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+}
+.error button { margin-left: auto; flex: none; padding: 2px 8px; font-size: 12px; }
+
+/* ── 輸入 ────────────────────────────────────────────────────────── */
+.composer {
+  display: flex;
+  gap: 8px;
+  padding: 12px 16px;
+  border-top: 1px solid var(--border);
+}
+.composer textarea {
+  flex: 1;
+  resize: none;
+  font: inherit;
+  color: inherit;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 9px 12px;
+  max-height: 140px;
+}
+.composer textarea:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
+.composer button { background: var(--accent); color: #fff; border-color: transparent; }
+
+/* ── 側邊欄 ──────────────────────────────────────────────────────── */
+.sidebar { display: flex; flex-direction: column; gap: 16px; min-height: 0; overflow-y: auto; }
+.card { padding: 14px 16px; }
+.card h2 {
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+  margin: 0 0 10px;
+}
+
+.toggle { display: flex; gap: 6px; }
+.toggle button { flex: 1; }
+.toggle button[aria-pressed="true"] {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.stats { display: grid; grid-template-columns: 1fr auto; gap: 4px 12px; font-size: 13px; }
+.stats dt { color: var(--muted); }
+.stats dd { margin: 0; font-variant-numeric: tabular-nums; text-align: right; }
+.note { font-size: 12px; color: var(--muted); margin: 10px 0 0; }
+
+.doc-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.doc {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  font-size: 13px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 7px 10px;
+}
+.doc-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.doc-meta { color: var(--muted); font-size: 12px; flex: none; }
+.doc button { padding: 2px 8px; font-size: 12px; flex: none; }
+
+.upload {
+  border: 1px dashed var(--border);
+  border-radius: 8px;
+  padding: 14px;
+  text-align: center;
+  color: var(--muted);
+  font-size: 13px;
+  cursor: pointer;
+  display: block;
+}
+.upload:hover { border-color: var(--accent); color: var(--accent); }
+.upload input { display: none; }
+
+.dot { width: 8px; height: 8px; border-radius: 50%; flex: none; display: inline-block; }
+.dot.ok { background: #16a34a; }
+.dot.off { background: var(--muted); }

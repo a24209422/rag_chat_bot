@@ -17,8 +17,9 @@ RAG 拆成兩段：先用 embedding 從知識庫撈出最相關的段落，再�
 │   ├── main.py             /health、/chat、/chat/stream、/documents
 │   ├── schemas.py          請求與回應的形狀（pydantic）
 │   └── deps.py             side → ChatBot，第一次用到才建
-├── cloud_app.py            雲端版進入點（幾行，畫面在 shared/app.py）
-├── onperm_app.py           地端版進入點
+├── frontend/               ← React + Vite 前端（另一個客戶端，見 frontend/README.md）
+├── cloud_app.py            Streamlit 雲端版進入點（畫面在 shared/app.py）
+├── onperm_app.py           Streamlit 地端版進入點
 ├── data/
 │   ├── jobs.json           基礎語料（由 tools.build_jobs 產生）
 │   ├── registry.db         上傳文件的登記簿（執行期產生，不進版控）
@@ -281,8 +282,14 @@ python -m tools.probe_threshold cloud     # 會打 embedding API
 
 ```bash
 uvicorn api.main:app --reload      # 後端，聽 http://localhost:8000
-streamlit run cloud_app.py         # 另開一個終端
+
+# 前端二選一（另開一個終端）
+cd frontend && npm install && npm run dev   # React，http://localhost:5173
+streamlit run cloud_app.py                  # Streamlit
 ```
+
+兩個前端打同一組 API，所以沒有重複的問答邏輯——差別只在畫面。
+React 那邊多了文件上傳管理與逐 token 吐字；Streamlit 那邊是最小可跑的對照組。
 
 互動式 API 文件在 <http://localhost:8000/docs>（FastAPI 從 `api/schemas.py` 自動生成）。
 
@@ -376,6 +383,15 @@ curl -X POST http://localhost:8000/chat -H "Content-Type: application/json"     
 
 `/health` 的 `loaded` 回報的也是「索引算好了」而不是「物件建好了」，
 所以看得出預熱有沒有生效。
+
+## 前端
+
+`frontend/` 是 React + Vite + TypeScript，功能：串流對話、來源列（代號獨立顯示）、
+雲端／地端切換、token 計量、文件上傳與刪除。細節見 [frontend/README.md](frontend/README.md)。
+
+瀏覽器是從前端的來源直接打 API，所以後端有 CORS 設定（`CORS_ORIGINS`，
+預設放行 `localhost:5173`）。Streamlit 與 CLI 是從伺服器端呼叫，不受 CORS 管——
+這也是為什麼這個中介層拖到現在才加。
 
 ## 動態知識庫
 

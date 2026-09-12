@@ -9,6 +9,7 @@ import json
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, HTTPException, UploadFile
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 
 import providers
@@ -49,6 +50,16 @@ app = FastAPI(
     version="0.1.0",
     summary="媒合會職缺查詢。雲端（Gemini）與地端（llama.cpp）同一組端點。",
     lifespan=lifespan,
+)
+
+
+# 瀏覽器前端要的。Stage 3 沒加是因為當時只有 Streamlit（伺服器端呼叫，
+# 不受 CORS 管）——為了還不存在的客戶端先加中介層是多餘的。現在它存在了。
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=settings().cors_list(),
+    allow_methods=["GET", "POST", "DELETE"],
+    allow_headers=["*"],
 )
 
 

@@ -66,6 +66,11 @@ class Settings(BaseSettings):
     # 在 .env 裡寫起來很彆扭。
     api_warm: str = ""
 
+    # 瀏覽器前端的來源。Streamlit 與 CLI 是從伺服器端打 API，不受 CORS 管；
+    # React 是從瀏覽器打，不設這個就會被擋下來（而且錯誤只出現在 devtools）。
+    # 逗號分隔。* 會連帶關掉帶 cookie 的請求，所以老實列出來。
+    cors_origins: str = "http://localhost:5173,http://127.0.0.1:5173"
+
     # ── 上傳的文件 ───────────────────────────────────────────────────
     max_upload_bytes: int = 10 * 1024 * 1024
     allowed_upload_suffixes: str = ".pdf"      # 逗號分隔，理由見 shared/ingest.py
@@ -79,6 +84,9 @@ class Settings(BaseSettings):
 
     def warm_sides(self):
         return [s.strip() for s in self.api_warm.split(",") if s.strip()]
+
+    def cors_list(self):
+        return [s.strip() for s in self.cors_origins.split(",") if s.strip()]
 
     def upload_suffixes(self):
         return [s.strip().lower() for s in self.allowed_upload_suffixes.split(",")
