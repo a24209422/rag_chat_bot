@@ -28,7 +28,9 @@ class Doc:
     text: str                                  # 算向量用的那一塊
     label: str = ""                            # 一行摘要：UI caption 與 probe_threshold 用
     full: str = ""                             # 餵生成模型的完整職缺
-    meta: dict = field(default_factory=dict)   # 結構化欄位（代號、公司、地點…）
+    meta: dict = field(default_factory=dict)   # 結構化欄位原文（代號、公司、地點…）
+    facets: dict = field(default_factory=dict)  # 正規化後的分類，用來精確過濾
+                                               # （見 shared/facets.py）
     group: str = ""                            # 同源標記：同一個職缺切出來的多塊共用代號
 
     def __post_init__(self):

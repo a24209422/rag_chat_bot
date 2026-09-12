@@ -23,7 +23,14 @@ def ask(user, history, k=5):     # 5 個不同職缺。問「有哪些…」要�
         history.append({"role": "assistant", "content": reply})
         return reply, hits            # 省掉一次本機推論——地端省的是等待，不是配額
 
-    context = "\n".join(f"[{i+1}] {d.full}" for i, (d, _) in enumerate(hits))
+    # 真正可靠的完整清單是 UI 的來源列（每一筆 hit 都會顯示，label 以代號開頭），
+    # 模型的散文只當摘要看——實測 3B 模型不照指示抄代號，20 筆也只列 16~17 筆。
+    if len(hits) > 5:          # 篩選型問句可能撈回 20 個職缺（例如「台北的職缺」），
+        context = "\n".join("[%d] %s" % (i + 1, d.label)          # label 本身以代號開頭
+                            for i, (d, _) in enumerate(hits))
+    else:                      # 少數幾筆就給完整職缺，模型才答得出細節
+        context = "\n\n".join("[%d] 代號 %s\n%s" % (i + 1, d.group, d.full)
+                              for i, (d, _) in enumerate(hits))
     prompt = f"【資料】\n{context}\n\n【問題】\n{user}"
 
     history.append({"role": "user", "content": user})     # 歷史存乾淨的
@@ -36,7 +43,7 @@ def ask(user, history, k=5):     # 5 個不同職缺。問「有哪些…」要�
     to_send.insert(0, {"role": "system", "content": SYSTEM})   # system 不進歷史，每次現加
 
     try:
-        resp = requests.post(URL, json={"messages": to_send, "temperature": 0.7},
+        resp = requests.post(URL, json={"messages": to_send, "temperature": 0.2},
                              timeout=120)
         resp.raise_for_status()
     except Exception:

@@ -16,6 +16,9 @@ sys.stderr.reconfigure(encoding="utf-8")
 
 import pypdfium2 as pdfium                        # noqa: E402
 
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "shared"))
+from facets import derive                         # noqa: E402
+
 # ── 清理：以下每一條都是實際掃過這批 PDF、逐處確認後才加的 ──────────────
 FIXES = {
     "\ufffe": "-",    # 行尾連字號被 pdfium 抽成非字元。全庫 4 處，逐一比對原圖確認：
@@ -135,7 +138,9 @@ def build(pdf_dir):
             jobs += 1
 
             meta = {k: f[k] for k in SHORT if f.get(k)}
-            label = " \u00b7 ".join(x for x in (f.get("公司"), f.get("職缺"),
+            # 代號放最前面：完整精確的清單要由程式給，不能指望模型複述。
+            # 實測 3B 模型會自己決定格式、把代號丟掉，20 筆也只列得出 16~17 筆。
+            label = " \u00b7 ".join(x for x in (code, f.get("公司"), f.get("職缺"),
                                                 f.get("地點")) if x)
             full = "\n".join("%s\uff1a%s" % (k, v) for k, v in f.items() if v)
 
@@ -149,10 +154,11 @@ def build(pdf_dir):
                     name = "%s%s" % (k, j + 1 if j else "")
                     chunks.append((name, "%s %s %s" % (f.get("職缺", ""), k, part)))
 
+            fac = derive(f)          # 正規化成可精確比對的分類，見 shared/facets.py
             for name, text in chunks:
                 docs.append({
                     "id": "%s#%s" % (code, name), "text": text, "label": label,
-                    "full": full, "meta": meta, "group": code,
+                    "full": full, "meta": meta, "facets": fac, "group": code,
                 })
     return docs, jobs
 

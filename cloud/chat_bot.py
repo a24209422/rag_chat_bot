@@ -32,7 +32,14 @@ def ask(user, history, k=5):     # 5 個不同職缺。問「有哪些…」要�
         history.append({"role": "model", "parts": [{"text": reply}]})
         return reply, hits, {"in": 0, "out": 0}   # 省掉生成那通 API（檢索那通還是打了）
 
-    context = "\n".join(f"[{i+1}] {d.full}" for i, (d, _) in enumerate(hits))
+    # 真正可靠的完整清單是 UI 的來源列（每一筆 hit 都會顯示，label 以代號開頭），
+    # 模型的散文只當摘要看——實測 3B 模型不照指示抄代號，20 筆也只列 16~17 筆。
+    if len(hits) > 5:          # 篩選型問句可能撈回 20 個職缺（例如「台北的職缺」），
+        context = "\n".join("[%d] %s" % (i + 1, d.label)          # label 本身以代號開頭
+                            for i, (d, _) in enumerate(hits))
+    else:                      # 少數幾筆就給完整職缺，模型才答得出細節
+        context = "\n\n".join("[%d] 代號 %s\n%s" % (i + 1, d.group, d.full)
+                              for i, (d, _) in enumerate(hits))
     prompt = f"【資料】\n{context}\n\n【問題】\n{user}"
 
     history.append({"role": "user", "parts": [{"text": user}]})    # 歷史存乾淨的
