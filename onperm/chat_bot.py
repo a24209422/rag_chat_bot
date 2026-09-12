@@ -85,7 +85,8 @@ if __name__ == "__main__":       # python -m onperm.chat_bot
         except requests.exceptions.ConnectionError:
             print(f"✗ 連不上 {bot.url}")
             print("  → llama.cpp server 沒開。另開一個終端跑（詳見 README）：")
-            print("     llama-server.exe -m <模型>.gguf --port 8080 -c 8192 -ngl 99 --device Vulkan0")
+            # noqa 理由：這是要整行複製貼上的指令，折行就不能用了
+            print("     llama-server.exe -m <模型>.gguf --port 8080 -c 8192 -ngl 99 --device Vulkan0")  # noqa: E501
             continue                # 回到迴圈開頭，不要整支程式死掉
         except requests.exceptions.Timeout:
             print("✗ 等超過 120 秒，模型可能還在載入，稍等再問")

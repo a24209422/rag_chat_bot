@@ -1,12 +1,19 @@
+# 執行期依賴。版本鎖在「跑過 99 個測試都通過」的那一組——
+# 不鎖的話，哪天某個套件改了行為，你會以為是自己的程式壞了。
+# 要升級就改這裡的數字，然後跑 python -m pytest 確認。
+#
+# 開發工具（pytest / ruff / pre-commit）在 requirements-dev.txt，
+# 刻意分開：cloud_app.py 要部署到 Streamlit Cloud，那邊不需要測試工具。
+
 # 雲端版（Gemini）
-google-genai
-python-dotenv
-numpy
-streamlit
+google-genai==2.22.0
+python-dotenv==1.2.3
+numpy==2.5.2
+streamlit==1.62.0
 
 # 地端版（llama.cpp + 本地 embedding）
-requests
-sentence-transformers
+requests==2.34.2
+sentence-transformers==6.0.1
 
 # 資料建置（tools/build_jobs.py 把職缺 PDF 解析成 data/jobs.json）
-pypdfium2
+pypdfium2==5.13.0

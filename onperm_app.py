@@ -23,7 +23,9 @@ st.title("💬 小聊天機器人（地端版）")
 st.session_state.setdefault("history", [])      # 跟 CLI 同一份格式：role / content
 st.session_state.setdefault("sources", [])      # ← 與 history 等長；user 那格放 None
 
-for m, src in zip(st.session_state.history, st.session_state.sources):
+# strict=True：history 與 sources 必須等長。不加的話 zip() 會沉默截斷，
+# 症狀是來源被標到別人的回答底下——寧可當場報錯也不要默默錯位。
+for m, src in zip(st.session_state.history, st.session_state.sources, strict=True):
     with st.chat_message(m["role"]):            # 地端是 OpenAI 格式，role 直接就能畫
         st.write(m["content"])                  # （雲端要把 model 轉成 assistant）
         for d, s in (src or []):                # user 那格是 None，不能直接迭代

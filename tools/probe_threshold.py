@@ -11,12 +11,11 @@ SIDE = sys.argv[1] if len(sys.argv) > 1 else "cloud"
 if SIDE not in ("cloud", "onperm"):
     raise SystemExit("第一個參數要是 cloud 或 onperm，收到 %r" % SIDE)
 
-import numpy as np                            # noqa: E402
+# 這兩個 import 擺在參數檢查之後（所以要 noqa: E402）：
+# 打錯 side 的時候不必先等 sentence_transformers 載入好幾秒才看到錯誤訊息。
+import numpy as np  # noqa: E402
 
-import providers                              # noqa: E402
-                                              # ↑ 擺在參數檢查之後：
-                                              #   打錯 side 時不必先等
-                                              #   sentence_transformers 載入
+import providers  # noqa: E402
 
 print(f"量的是：{SIDE}")
 

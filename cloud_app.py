@@ -33,7 +33,9 @@ st.session_state.setdefault("history", [])      # 跟 CLI 同一份格式：role
 st.session_state.setdefault("sources", [])      # ← 與 history 等長；user 那格放 None
 st.session_state.setdefault("usage", {"in": 0, "out": 0})   # 本次 session 的 token 累計
 
-for m, src in zip(st.session_state.history, st.session_state.sources):
+# strict=True：history 與 sources 必須等長。不加的話 zip() 會沉默截斷，
+# 症狀是來源被標到別人的回答底下——寧可當場報錯也不要默默錯位。
+for m, src in zip(st.session_state.history, st.session_state.sources, strict=True):
     role = "user" if m["role"] == "user" else "assistant"   # model → assistant 才畫得出來
     with st.chat_message(role):                 # 一格要放兩樣東西，所以用 with
         st.write(m["parts"][0]["text"])

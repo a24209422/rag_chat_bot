@@ -14,9 +14,9 @@ from pathlib import Path
 sys.stdout.reconfigure(encoding="utf-8")
 sys.stderr.reconfigure(encoding="utf-8")
 
-import pypdfium2 as pdfium                        # noqa: E402
+import pypdfium2 as pdfium  # noqa: E402
 
-from shared.facets import derive                  # noqa: E402
+from shared.facets import derive  # noqa: E402
 
 # ── 清理：以下每一條都是實際掃過這批 PDF、逐處確認後才加的 ──────────────
 FIXES = {
@@ -170,6 +170,8 @@ if __name__ == "__main__":
 
     docs, jobs = build(a.pdf_dir)
     Path(a.out).parent.mkdir(parents=True, exist_ok=True)
-    Path(a.out).write_text(json.dumps(docs, ensure_ascii=False, indent=1),
+    # 結尾要有換行：pre-commit 的 end-of-file-fixer 會補上，產生器不補的話
+    # 每次重建 jobs.json 都會跟 hook 來回打架。
+    Path(a.out).write_text(json.dumps(docs, ensure_ascii=False, indent=1) + "\n",
                            encoding="utf-8")
     print("%d 個職缺 \u2192 %d 塊 \u2192 %s" % (jobs, len(docs), a.out))

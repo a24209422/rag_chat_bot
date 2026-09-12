@@ -66,6 +66,12 @@ RAG 拆成兩段：先用 embedding 從知識庫撈出最相關的段落，再�
 pip install -r requirements.txt
 ```
 
+版本是鎖死的（`==`），鎖在「99 個測試都通過」的那一組。要改開發相關的東西就裝：
+
+```bash
+pip install -r requirements-dev.txt
+```
+
 ## 建知識庫
 
 ```bash
@@ -225,6 +231,41 @@ python -m tools.probe_threshold cloud     # 會打 embedding API
 第二個代表建一次索引要 140 個 request、跨兩個配額視窗，實測耗時 **136 秒**。所以雲端這側加了快取 `data/vecs_cloud.npz`（421 KB，不進版控）——走快取只要 2.3 秒、零 API 呼叫。快取的 key 是所有 `text` 的 SHA256，重建 `jobs.json` 之後會自動失效重算。
 
 地端不需要快取：e5 在本機跑，重算只是慢十秒，不燒任何配額。
+
+## 測試與 lint
+
+```bash
+python -m pytest          # 99 個測試，約 1.4 秒
+python -m ruff check .    # lint
+pre-commit install        # 裝一次，之後每次 commit 自動跑上面兩項
+```
+
+測試刻意「不碰模型也不碰網路」，所以整批跑完是秒級的：
+
+| 檔案 | 測什麼 | 怎麼避開外部依賴 |
+|------|--------|-----------------|
+| `test_facets.py` | 正規化與查詢條件抽取 | 純函式，本來就沒有依賴 |
+| `test_build_jobs.py` | PDF 文字清理、切塊、欄位解析 | 假的 PDF 物件 |
+| `test_retriever.py` | 檢索邏輯：去重、門檻、過濾放寬 | 分數由字典指定的假檢索器 |
+| `test_chat_bot.py` | prompt 組裝、history 回滾、token 計量 | 換掉 `requests.post` 與 Gemini client |
+| `test_knowledge.py` | `Doc` 預設值、`import` 不讀檔 | — |
+| `test_corpus.py` | 對真實 `jobs.json` 的筆數回歸 | 過濾是 facet 決定的，不需要算向量 |
+
+`test_retriever.py` 是 Stage 0 的直接成果——在那之前 `DOCS` 和索引都是模組層全域，
+沒辦法塞一批自己的資料進去，這些測試寫不出來。
+
+`test_corpus.py` 把 [metadata 過濾](#metadata-過濾) 那張表釘成測試：問句撈回幾個職缺
+完全由 facet 決定、跟相似度無關，所以不必載 embedding 模型也驗得出來。
+**重建 `jobs.json` 之後這些數字會變，要跟 README 一起更新。**
+
+### 兩個工具設定上的決定
+
+- **不跑 `ruff format`**。這份程式碼的行內註解是手動對齊的（欄位說明、指向特定參數的箭頭），
+  自動排版會把對齊全部打散，換來的只有風格統一。所以只 lint，不排版。
+- **`UP031` 關掉**。ruff 想把 13 處 `%` 格式化改成 f-string，但參數多或字串含大量中文時
+  `%` 讀起來比較清楚。全部改寫是純風格 churn。
+- `.pre-commit-config.yaml` 是全專案唯一用英文註解的檔案：pre-commit 用系統 locale
+  （這台機器是 cp950）而不是 UTF-8 讀它，寫中文會讓它在解析 YAML 之前就 UnicodeDecodeError。
 
 ## 說明
 

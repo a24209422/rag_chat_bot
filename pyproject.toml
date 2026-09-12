@@ -1,0 +1,35 @@
+# 這個專案不打包發佈，pyproject.toml 只用來放工具設定。
+
+[tool.pytest.ini_options]
+# 測試檔放在 tests/，但要 import 得到專案根目錄的 shared/、cloud/…
+# 這一行取代「在每個測試檔頂端插 sys.path」那種寫法。
+pythonpath = ["."]
+testpaths = ["tests"]
+addopts = "-q --strict-markers"
+markers = [
+    "corpus: 需要 data/jobs.json 才能跑（對真實語料的回歸測試）",
+]
+
+[tool.ruff]
+# 現有程式碼實測最寬 100 字元，所以訂 100 是零改動的誠實值，不是隨手挑的。
+line-length = 100
+target-version = "py313"
+
+[tool.ruff.lint]
+select = [
+    "E",    # pycodestyle 錯誤
+    "W",    # pycodestyle 警告
+    "F",    # pyflakes：未使用的 import、未定義的名稱
+    "I",    # isort：import 排序
+    "UP",   # pyupgrade：過時寫法
+    "B",    # bugbear：容易出錯的寫法
+]
+ignore = [
+    # 專案刻意混用 % 與 f-string：多個參數、或字串本身含大量中文時，
+    # % 讀起來比 f-string 清楚。13 處全部改寫是純風格 churn，沒有好處。
+    "UP031",
+]
+
+[tool.ruff.lint.isort]
+# 讓 ruff 知道這幾個是本專案的模組，才不會把它們當成第三方套件排在一起
+known-first-party = ["shared", "cloud", "onperm", "tools", "providers"]

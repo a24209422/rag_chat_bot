@@ -1,8 +1,6 @@
 # onperm/rag.py（地端版檢索）
 from functools import lru_cache
 
-from sentence_transformers import SentenceTransformer
-
 from shared.retriever import BaseRetriever
 
 MODEL = "intfloat/multilingual-e5-small"
@@ -19,7 +17,12 @@ def load_embedder(name=MODEL):
     快取是因為載入很貴（第一次還要下載約 470MB），不是因為需要全域狀態——
     所以做成「帶參數的函式 + lru_cache」而不是模組層的 _EMBEDDER：
     要比較兩個 embedding 模型時各拿各的，不會互相覆蓋。
+
+    import 也擺在函式裡：sentence_transformers 光是 import 就要 25 秒
+    （實測），而 import onperm.rag 的人不一定要用到模型——測試、
+    probe_threshold 挑另一邊、providers 只是被載入，都不該付這個成本。
     """
+    from sentence_transformers import SentenceTransformer
     return SentenceTransformer(name)
 
 

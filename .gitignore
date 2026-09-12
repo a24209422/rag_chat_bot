@@ -11,6 +11,10 @@ __pycache__/
 venv/
 env/
 .ipynb_checkpoints/
+# 測試與 lint 的快取。這兩個工具會自己在目錄裡寫 .gitignore，
+# 但那太隱晦了——明寫在這裡，看 .gitignore 就知道會產生什麼。
+.pytest_cache/
+.ruff_cache/
 
 # 模型與快取
 models/

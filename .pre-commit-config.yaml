@@ -1,0 +1,36 @@
+# Checks that run before each commit. Install once with: pre-commit install
+#
+# NOTE: this is the only file in the project with English-only comments.
+# pre-commit opens this config with the system locale encoding (cp950 on this
+# machine), not UTF-8, so any Chinese character here crashes it with
+# UnicodeDecodeError before it even parses the YAML.
+#
+# ruff-format is deliberately NOT included: the inline comments in this codebase
+# are hand-aligned (field notes, the arrows pointing at specific arguments), and
+# auto-formatting would scatter that alignment. Lint only, no reformatting.
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v6.0.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-yaml
+      - id: check-toml
+      - id: check-merge-conflict
+      - id: check-added-large-files
+        args: [--maxkb=1024]        # data/jobs.json is ~590KB
+
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.16.7
+    hooks:
+      - id: ruff-check
+        args: [--fix]
+
+  - repo: local
+    hooks:
+      - id: pytest
+        name: pytest (full suite, a couple of seconds)
+        entry: python -m pytest
+        language: system
+        pass_filenames: false
+        types: [python]
