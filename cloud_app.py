@@ -1,12 +1,10 @@
 # cloud_app.py（RAG 版介面：只管畫面，問答交給 cloud/chat_bot.py）
 import os
-import sys
-from pathlib import Path
 
 import streamlit as st
 from google.genai import errors
 
-sys.path.insert(0, str(Path(__file__).parent / "cloud"))   # ← 換成 "onperm" 就是地端版
+import providers
 
 try:                                     # 雲端有 secrets，本機通常沒有
     if "GEMINI_API_KEY" in st.secrets:
@@ -14,7 +12,20 @@ try:                                     # 雲端有 secrets，本機通常沒�
 except Exception:                        # 本機沒有 secrets.toml 時不要炸
     pass
 
-import chat_bot as bot                   # noqa: E402 ← 必須在設好 key 之後
+
+@st.cache_resource                       # ← 換成 "onperm" 就是地端版
+def get_bot():
+    """建一次就好。
+
+    Streamlit 每次互動都會從頭重跑整支腳本，沒有這個 decorator 的話，每問一句
+    就會重建一次 Retriever——索引跟著重算（雲端是 140 個 API request）。
+    以前靠 rag.py 的模組層 _DOC_VECS 全域「順便」達到這個效果，現在狀態在
+    實例上，就得明確講出快取的範圍。
+    """
+    return providers.chat_for("cloud")
+
+
+bot = get_bot()
 
 st.title("💬 小聊天機器人（雲端版）")
 
@@ -35,7 +46,7 @@ if user := st.chat_input("說點什麼…"):
     err = None
     with st.spinner("思考中…"):
         try:
-            reply, hits, u = bot.ask(user, st.session_state.history)   # ← 檢索 + 生成
+            reply, hits, u = bot.ask(user, st.session_state.history)  # ← 檢索 + 生成
         except Exception as e:
             err = e                     # 先接住，離開 spinner 再顯示
 

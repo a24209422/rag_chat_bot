@@ -1,9 +1,8 @@
 # probe_threshold.py（量 retrieve 的 min_score 該設多少）
-#   用法：python tools/probe_threshold.py cloud     ← 量雲端（會打 embedding API）
-#         python tools/probe_threshold.py onperm    ← 量地端（純本機，不花錢）
+#   用法：python -m tools.probe_threshold cloud     ← 量雲端（會打 embedding API）
+#         python -m tools.probe_threshold onperm    ← 量地端（純本機，不花錢）
 #   換 embedding 模型或大幅增修 DOCS 之後要重跑——門檻不是通用常數。
 import sys
-from pathlib import Path
 
 sys.stdout.reconfigure(encoding="utf-8")      # Windows 主控台預設 cp950，中文會變亂碼
 sys.stderr.reconfigure(encoding="utf-8")      # 錯誤訊息也要，不然防呆的中文會變亂碼
@@ -12,12 +11,12 @@ SIDE = sys.argv[1] if len(sys.argv) > 1 else "cloud"
 if SIDE not in ("cloud", "onperm"):
     raise SystemExit("第一個參數要是 cloud 或 onperm，收到 %r" % SIDE)
 
-ROOT = Path(__file__).resolve().parent.parent
-sys.path.insert(0, str(ROOT / SIDE))          # ← 換邊只換這裡，兩邊的 rag.py 同名同形狀
-sys.path.insert(0, str(ROOT / "shared"))
-
 import numpy as np                            # noqa: E402
-import rag                                    # noqa: E402 ← 解析到 cloud/ 或 onperm/
+
+import providers                              # noqa: E402
+                                              # ↑ 擺在參數檢查之後：
+                                              #   打錯 side 時不必先等
+                                              #   sentence_transformers 載入
 
 print(f"量的是：{SIDE}")
 
@@ -37,18 +36,20 @@ GROUPS = {
     ],
 }
 
-D = rag.doc_vecs()                            # 建索引（雲端會打一次 API；地端本機算）
+retriever = providers.retriever_for(SIDE)     # ← 換邊只換這裡
+docs = retriever.docs
+D = retriever.doc_vecs()                      # 建索引（雲端會打一次 API；地端本機算）
 tops = {}
 
 for name, questions in GROUPS.items():
     print(f"\n【{name}】")
     firsts = []
     for q in questions:
-        qv = rag.embed([q], "RETRIEVAL_QUERY")[0]
+        qv = retriever.embed([q], "RETRIEVAL_QUERY")[0]
         s = D @ qv
         i, j = np.argsort(-s)[:2]             # 看前兩名：第2名通常就是雜訊的高度
         firsts.append(float(s[i]))
-        print(f"  {q:<18} 第1名 {s[i]:.3f}   第2名 {s[j]:.3f}   ← {rag.DOCS[i].label[:10]}…")
+        print(f"  {q:<18} 第1名 {s[i]:.3f}   第2名 {s[j]:.3f}   ← {docs[i].label[:10]}…")
     tops[name] = firsts
     print(f"  {'範圍':<18} {min(firsts):.3f} ～ {max(firsts):.3f}")
 

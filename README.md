@@ -8,22 +8,26 @@
 
 RAG 拆成兩段：先用 embedding 從知識庫撈出最相關的段落，再把段落和問題一起丟給 LLM 回答。
 
-雲端與地端並排成兩個資料夾，模組**同名同形狀**——換邊只要換 `sys.path` 那一行：
+雲端與地端並排成兩個資料夾。兩邊的檢索器繼承同一個 base class，所以「同名同形狀」是
+繼承保證的，不是靠約定；換邊只要換 `providers.chat_for()` 的參數：
 
 ```
+├── providers.py            retriever_for() / chat_for()：依名稱取得某一邊的實作
 ├── cloud_app.py            Streamlit 介面（雲端版）
 ├── onperm_app.py           Streamlit 介面（地端版）
 ├── data/
-│   └── jobs.json           知識庫（由 tools/build_jobs.py 產生）
+│   └── jobs.json           知識庫（由 tools.build_jobs 產生）
 ├── shared/
-│   ├── knowledge.py        Doc 結構 + SYSTEM，兩邊共用
+│   ├── knowledge.py        Doc 結構 + load_docs() + SYSTEM，兩邊共用
+│   ├── retriever.py        BaseRetriever：共用的檢索邏輯，子類只補 embed()
 │   └── facets.py           把自由文字的 metadata 正規化成可精確比對的分類
 ├── cloud/
-│   ├── rag.py              Gemini gemini-embedding-001，輸出維度截短成 768
-│   └── chat_bot.py         Gemini gemini-flash-latest，含多輪記憶與 token 計量
+│   ├── client.py           Gemini client 的唯一建構點（讀金鑰只有這一處）
+│   ├── rag.py              CloudRetriever：gemini-embedding-001，維度截短成 768
+│   └── chat_bot.py         CloudChatBot：gemini-flash-latest，多輪記憶與 token 計量
 ├── onperm/
-│   ├── rag.py              sentence-transformers + intfloat/multilingual-e5-small
-│   └── chat_bot.py         走 llama.cpp server 的 OpenAI 相容 API
+│   ├── rag.py              OnpremRetriever：intfloat/multilingual-e5-small
+│   └── chat_bot.py         OnpremChatBot：走 llama.cpp server 的 OpenAI 相容 API
 └── tools/
     ├── build_jobs.py       職缺 PDF → data/jobs.json
     └── probe_threshold.py  量 retrieve 的 min_score 該設多少
@@ -42,7 +46,19 @@ RAG 拆成兩段：先用 embedding 從知識庫撈出最相關的段落，再�
 
 ### 看起來像、但不能合併的地方
 
-`ask()` 雲端回傳 `(reply, hits, usage)`、地端只有 `(reply, hits)`（本機推論不計費）；history 格式一邊是 Gemini 的 `parts`/`model`、一邊是 OpenAI 的 `content`/`assistant`。
+`ask()` 雲端回傳 `(reply, hits, usage)`、地端只有 `(reply, hits)`（本機推論不計費）；history 格式一邊是 Gemini 的 `parts`/`model`、一邊是 OpenAI 的 `content`/`assistant`；地端會截短 history 防爆 context，雲端不用。
+
+所以 `CloudChatBot` 和 `OnpremChatBot` 刻意沒有共同的 base class——硬合併只會換來一堆 `if side == ...`。反過來說 `retrieve()` 兩邊本來就逐字相同，那個才該合併，現在收在 `shared/retriever.py`，雲地差異縮到只剩 `embed()`、`min_score`、要不要快取索引三樣。
+
+### 狀態都掛在實例上，沒有模組層全域
+
+`Retriever` 的索引、區名詞彙表、知識庫，以及 Gemini client，全部是實例屬性而且延遲建立——建構子不讀檔、不讀金鑰、不載模型。這帶來幾件事：
+
+- 沒有 `data/jobs.json` 或 `GEMINI_API_KEY` 也 import 得起來（測試與 CI 需要）
+- 同一個 process 裡可以同時存在雲端與地端兩個 retriever
+- 測試可以傳自己的知識庫：`retriever_for("onperm", docs=[Doc(...)])`
+
+> ⚠ 舊版靠 `sys.path.insert` 切換兩邊，而 `cloud/rag.py` 與 `onperm/rag.py` 都叫 `rag`。`sys.modules` 會快取，所以一個 process 裡**只載得進其中一邊**，第二次 `import rag` 會靜默拿到第一邊——不報錯。Streamlit 一次只跑一支所以碰不到，但測試和後端服務都會撞上。
 
 ## 安裝
 
@@ -53,7 +69,7 @@ pip install -r requirements.txt
 ## 建知識庫
 
 ```bash
-python tools/build_jobs.py "<職缺 PDF 資料夾>"
+python -m tools.build_jobs "<職缺 PDF 資料夾>"
 ```
 
 產出 `data/jobs.json`：30 個職缺 → 140 塊。資料夾結構是每家公司一個子資料夾、裡面一份 PDF。
@@ -67,8 +83,8 @@ python tools/build_jobs.py "<職缺 PDF 資料夾>"
 3. 執行：
 
 ```bash
-python cloud/rag.py           # 只測檢索
-python cloud/chat_bot.py      # 互動對話（CLI）
+python -m cloud.rag           # 只測檢索
+python -m cloud.chat_bot      # 互動對話（CLI）
 streamlit run cloud_app.py    # 網頁介面
 ```
 
@@ -95,8 +111,8 @@ llama-server.exe -m <模型路徑>.gguf --port 8080 -c 8192 -ngl 99 --device Vul
 4. 另開一個終端執行：
 
 ```bash
-python onperm/rag.py          # 只測檢索（不需要 server）
-python onperm/chat_bot.py     # 互動對話（CLI，需要 server）
+python -m onperm.rag          # 只測檢索（不需要 server）
+python -m onperm.chat_bot     # 互動對話（CLI，需要 server）
 streamlit run onperm_app.py   # 網頁介面（需要 server）
 ```
 
@@ -105,8 +121,8 @@ streamlit run onperm_app.py   # 網頁介面（需要 server）
 ## 量門檻
 
 ```bash
-python tools/probe_threshold.py onperm    # 純本機，不花錢
-python tools/probe_threshold.py cloud     # 會打 embedding API
+python -m tools.probe_threshold onperm    # 純本機，不花錢
+python -m tools.probe_threshold cloud     # 會打 embedding API
 ```
 
 會列出「資料裡有的 / 沒有的 / 跟隨問句」三組問題的相似度分佈，算出兩群之間的間隙，判斷這個間隙可不可信，再決定要給門檻還是給下限。

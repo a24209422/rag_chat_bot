@@ -1,5 +1,5 @@
 # build_jobs.py（把媒合會職缺 PDF 解析成 data/jobs.json）
-#   用法：python tools/build_jobs.py <PDF資料夾> [-o data/jobs.json]
+#   用法：python -m tools.build_jobs <PDF資料夾> [-o data/jobs.json]
 #
 #   為什麼要有這一步：PDF 直接抽出來的整份文字太長，e5-small 只吃 512 token，
 #   超過會被「靜默截斷」——不報錯，尾巴就是永遠檢索不到。所以要在離線階段
@@ -16,8 +16,7 @@ sys.stderr.reconfigure(encoding="utf-8")
 
 import pypdfium2 as pdfium                        # noqa: E402
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "shared"))
-from facets import derive                         # noqa: E402
+from shared.facets import derive                  # noqa: E402
 
 # ── 清理：以下每一條都是實際掃過這批 PDF、逐處確認後才加的 ──────────────
 FIXES = {
