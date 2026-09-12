@@ -41,6 +41,12 @@ PLACEHOLDER = re.compile(r"【[^】]*待填[^】]*】")
 # 不砍的話這三個臻至科技的職缺會同時被判成台北和新北。
 PAREN = re.compile(r"[（(][^）)]*[）)]")
 
+# 區名用抽取而不是硬編一張全台區名表，新資料進來才能自動涵蓋。
+# 必須緊跟在「市／縣」或城市名之後：不加這個錨點的話，「台北大安區」會被
+# 抓成「北大安」。台灣的區名幾乎都是兩個字。
+DISTRICT = re.compile(r"(?:市|縣|台北|臺北|新北|桃園|新竹|台中|臺中|台南|臺南|高雄)"
+                      r"([一-鿿]{2})區")
+
 
 def _hits(text, table):
     t = text.lower()
@@ -63,19 +69,35 @@ def derive(meta):
     kind_src = meta.get("工作性質", "") + " " + meta.get("職缺", "")
     return {
         "city": _hits(city_src, CITY),
+        # 用 dict.fromkeys 去重又保留順序。抓不到就空的——
+        # 「全遠端」「台北或新竹」「【待填…】」都沒有區級資訊，那就誠實留空。
+        "district": list(dict.fromkeys(DISTRICT.findall(city_src))),
         "remote": any(w in loc.lower() for w in REMOTE),
         "kind": _hits(kind_src, KIND),
         "degree": _hits(meta.get("學歷要求", ""), DEGREE),
     }
 
 
-def parse_query(q):
+def known_districts(docs):
+    """把語料裡出現過的區名蒐集起來，當查詢時的詞彙表。
+
+    區名在文件裡有「區」字可以當錨點，但問句裡沒有（「內湖的職缺」），
+    所以查詢側沒辦法用同一個正規表示式，得靠詞彙表比對。
+    """
+    return sorted({d for doc in docs for d in doc.facets.get("district", [])})
+
+
+def parse_query(q, districts=()):
     """從問句抓出過濾條件。
 
     規則式而不是叫模型抽：零延遲、可預測、出錯時看得出是哪條規則錯了。
-    詞彙表就是上面那幾張表，跟 derive() 共用，所以不會對不起來。
+    城市／性質／學歷的詞彙表就是上面那幾張，跟 derive() 共用所以不會對不起來；
+    區名的詞彙表要由呼叫端給（見 known_districts），因為它是從資料長出來的。
     """
     f = {}
+    dist = [d for d in districts if d in q]
+    if dist:
+        f["district"] = dist
     city = _hits(q, CITY)
     if city:
         f["city"] = city

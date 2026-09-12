@@ -8,11 +8,16 @@ from sentence_transformers import SentenceTransformer
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "shared"))
 # 知識庫兩邊共用——同一批 DOCS 才比得出雲端與地端的差異
 from knowledge import DOCS   # noqa: E402
-from facets import parse_query, match   # noqa: E402 ← 精確過濾，見 shared/facets.py
+from facets import parse_query, match, known_districts   # noqa: E402
+                                       # ↑ 精確過濾，見 shared/facets.py
 
 # ── 離線階段：把每段話算成向量（放到「意思的地圖」上）──
 # import 時不載模型也不建索引，第一次檢索才做（比照雲端版 cloud/rag.py）
 _EMBEDDER = None
+# 區名詞彙表：問句裡的「內湖」沒有「區」字可當錨點，只能靠詞彙表比對。
+# 從 DOCS 長出來，所以重建 jobs.json 之後會自動跟著更新。
+DISTRICTS = known_districts(DOCS)
+
 _DOC_VECS = None
 
 
@@ -68,7 +73,7 @@ def retrieve(question, k=5, min_score=0.82, filters=None):
     的多塊，不去重的話同一份 full 會被重複塞進 prompt。
     """
     if filters is None:
-        filters = parse_query(question)
+        filters = parse_query(question, DISTRICTS)
     qv = embed([question], "RETRIEVAL_QUERY")[0]
     scores = doc_vecs() @ qv
 

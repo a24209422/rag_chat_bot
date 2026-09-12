@@ -22,6 +22,9 @@
    "city": [
     "台北"
    ],
+   "district": [
+    "大安"
+   ],
    "remote": false,
    "kind": [],
    "degree": [
@@ -52,6 +55,9 @@
   "facets": {
    "city": [
     "台北"
+   ],
+   "district": [
+    "大安"
    ],
    "remote": false,
    "kind": [],
@@ -84,6 +90,9 @@
    "city": [
     "台北"
    ],
+   "district": [
+    "大安"
+   ],
    "remote": false,
    "kind": [],
    "degree": [
@@ -114,6 +123,9 @@
   "facets": {
    "city": [
     "台北"
+   ],
+   "district": [
+    "大安"
    ],
    "remote": false,
    "kind": [],
@@ -146,6 +158,9 @@
    "city": [
     "台北"
    ],
+   "district": [
+    "大安"
+   ],
    "remote": false,
    "kind": [],
    "degree": [
@@ -176,6 +191,9 @@
   "facets": {
    "city": [
     "台北"
+   ],
+   "district": [
+    "大安"
    ],
    "remote": false,
    "kind": [],
@@ -208,6 +226,9 @@
    "city": [
     "台北"
    ],
+   "district": [
+    "大安"
+   ],
    "remote": false,
    "kind": [],
    "degree": [
@@ -238,6 +259,9 @@
   "facets": {
    "city": [
     "台北"
+   ],
+   "district": [
+    "大安"
    ],
    "remote": false,
    "kind": [],
@@ -270,6 +294,9 @@
    "city": [
     "台北"
    ],
+   "district": [
+    "大安"
+   ],
    "remote": false,
    "kind": [],
    "degree": [
@@ -300,6 +327,9 @@
   "facets": {
    "city": [
     "台北"
+   ],
+   "district": [
+    "大安"
    ],
    "remote": false,
    "kind": [],
@@ -332,6 +362,9 @@
    "city": [
     "台北"
    ],
+   "district": [
+    "大安"
+   ],
    "remote": false,
    "kind": [],
    "degree": [
@@ -362,6 +395,9 @@
   "facets": {
    "city": [
     "台北"
+   ],
+   "district": [
+    "大安"
    ],
    "remote": false,
    "kind": [],
@@ -394,6 +430,9 @@
    "city": [
     "台北"
    ],
+   "district": [
+    "大安"
+   ],
    "remote": false,
    "kind": [],
    "degree": [
@@ -424,6 +463,9 @@
   "facets": {
    "city": [
     "台北"
+   ],
+   "district": [
+    "萬華"
    ],
    "remote": false,
    "kind": [
@@ -459,6 +501,9 @@
    "city": [
     "台北"
    ],
+   "district": [
+    "萬華"
+   ],
    "remote": false,
    "kind": [
     "全職"
@@ -492,6 +537,9 @@
   "facets": {
    "city": [
     "台北"
+   ],
+   "district": [
+    "萬華"
    ],
    "remote": false,
    "kind": [
@@ -527,6 +575,9 @@
    "city": [
     "台北"
    ],
+   "district": [
+    "萬華"
+   ],
    "remote": false,
    "kind": [
     "全職"
@@ -560,6 +611,9 @@
   "facets": {
    "city": [
     "台北"
+   ],
+   "district": [
+    "萬華"
    ],
    "remote": false,
    "kind": [
@@ -595,6 +649,9 @@
    "city": [
     "台北"
    ],
+   "district": [
+    "萬華"
+   ],
    "remote": false,
    "kind": [
     "全職"
@@ -628,6 +685,9 @@
   "facets": {
    "city": [
     "台北"
+   ],
+   "district": [
+    "萬華"
    ],
    "remote": false,
    "kind": [
@@ -663,6 +723,9 @@
    "city": [
     "台北"
    ],
+   "district": [
+    "萬華"
+   ],
    "remote": false,
    "kind": [
     "全職"
@@ -696,6 +759,9 @@
   "facets": {
    "city": [
     "台北"
+   ],
+   "district": [
+    "內湖"
    ],
    "remote": false,
    "kind": [
@@ -734,6 +800,9 @@
    "city": [
     "台北"
    ],
+   "district": [
+    "內湖"
+   ],
    "remote": false,
    "kind": [
     "全職",
@@ -770,6 +839,9 @@
   "facets": {
    "city": [
     "台北"
+   ],
+   "district": [
+    "內湖"
    ],
    "remote": false,
    "kind": [
@@ -808,6 +880,9 @@
    "city": [
     "台北"
    ],
+   "district": [
+    "內湖"
+   ],
    "remote": false,
    "kind": [
     "全職",
@@ -845,6 +920,9 @@
    "city": [
     "台北"
    ],
+   "district": [
+    "內湖"
+   ],
    "remote": false,
    "kind": [
     "全職",
@@ -880,6 +958,9 @@
   "facets": {
    "city": [
     "台北"
+   ],
+   "district": [
+    "內湖"
    ],
    "remote": false,
    "kind": [
@@ -917,6 +998,9 @@
    "city": [
     "台北"
    ],
+   "district": [
+    "內湖"
+   ],
    "remote": false,
    "kind": [
     "全職",
@@ -952,6 +1036,9 @@
   "facets": {
    "city": [
     "台北"
+   ],
+   "district": [
+    "內湖"
    ],
    "remote": false,
    "kind": [
@@ -989,6 +1076,9 @@
    "city": [
     "台北"
    ],
+   "district": [
+    "中山"
+   ],
    "remote": false,
    "kind": [
     "全職"
@@ -1021,6 +1111,9 @@
   "facets": {
    "city": [
     "台北"
+   ],
+   "district": [
+    "中山"
    ],
    "remote": false,
    "kind": [
@@ -1055,6 +1148,9 @@
    "city": [
     "台北"
    ],
+   "district": [
+    "中山"
+   ],
    "remote": false,
    "kind": [
     "全職"
@@ -1087,6 +1183,9 @@
   "facets": {
    "city": [
     "台北"
+   ],
+   "district": [
+    "中山"
    ],
    "remote": false,
    "kind": [
@@ -1121,6 +1220,9 @@
    "city": [
     "台北"
    ],
+   "district": [
+    "中山"
+   ],
    "remote": false,
    "kind": [
     "全職"
@@ -1153,6 +1255,9 @@
   "facets": {
    "city": [
     "台北"
+   ],
+   "district": [
+    "中山"
    ],
    "remote": false,
    "kind": [
@@ -1187,6 +1292,9 @@
    "city": [
     "台北"
    ],
+   "district": [
+    "中山"
+   ],
    "remote": false,
    "kind": [
     "全職"
@@ -1219,6 +1327,9 @@
   "facets": {
    "city": [
     "台北"
+   ],
+   "district": [
+    "中山"
    ],
    "remote": false,
    "kind": [
@@ -1253,6 +1364,9 @@
    "city": [
     "台北"
    ],
+   "district": [
+    "中山"
+   ],
    "remote": false,
    "kind": [
     "全職"
@@ -1285,6 +1399,9 @@
   "facets": {
    "city": [
     "台北"
+   ],
+   "district": [
+    "中山"
    ],
    "remote": false,
    "kind": [
@@ -1321,6 +1438,9 @@
    "city": [
     "台北"
    ],
+   "district": [
+    "中山"
+   ],
    "remote": false,
    "kind": [
     "實習",
@@ -1355,6 +1475,9 @@
   "facets": {
    "city": [
     "台北"
+   ],
+   "district": [
+    "中山"
    ],
    "remote": false,
    "kind": [
@@ -1391,6 +1514,9 @@
    "city": [
     "台北"
    ],
+   "district": [
+    "中山"
+   ],
    "remote": false,
    "kind": [
     "實習",
@@ -1425,6 +1551,9 @@
   "facets": {
    "city": [
     "台北"
+   ],
+   "district": [
+    "中山"
    ],
    "remote": false,
    "kind": [
@@ -1461,6 +1590,9 @@
    "city": [
     "台北"
    ],
+   "district": [
+    "中山"
+   ],
    "remote": false,
    "kind": [
     "實習",
@@ -1495,6 +1627,9 @@
   "facets": {
    "city": [
     "台北"
+   ],
+   "district": [
+    "中正"
    ],
    "remote": false,
    "kind": [
@@ -1531,6 +1666,9 @@
    "city": [
     "台北"
    ],
+   "district": [
+    "中正"
+   ],
    "remote": false,
    "kind": [
     "全職"
@@ -1565,6 +1703,9 @@
   "facets": {
    "city": [
     "台北"
+   ],
+   "district": [
+    "中正"
    ],
    "remote": false,
    "kind": [
@@ -1601,6 +1742,9 @@
    "city": [
     "台北"
    ],
+   "district": [
+    "中正"
+   ],
    "remote": false,
    "kind": [
     "全職"
@@ -1635,6 +1779,9 @@
   "facets": {
    "city": [
     "台北"
+   ],
+   "district": [
+    "中正"
    ],
    "remote": false,
    "kind": [
@@ -1671,6 +1818,9 @@
    "city": [
     "台北"
    ],
+   "district": [
+    "中正"
+   ],
    "remote": false,
    "kind": [
     "全職"
@@ -1705,6 +1855,9 @@
   "facets": {
    "city": [
     "台北"
+   ],
+   "district": [
+    "中正"
    ],
    "remote": false,
    "kind": [
@@ -1741,6 +1894,9 @@
    "city": [
     "台北"
    ],
+   "district": [
+    "中正"
+   ],
    "remote": false,
    "kind": [
     "全職"
@@ -1775,6 +1931,9 @@
   "facets": {
    "city": [
     "台北"
+   ],
+   "district": [
+    "中正"
    ],
    "remote": false,
    "kind": [
@@ -1811,6 +1970,9 @@
    "city": [
     "台北"
    ],
+   "district": [
+    "中正"
+   ],
    "remote": false,
    "kind": [
     "全職"
@@ -1845,6 +2007,9 @@
   "facets": {
    "city": [
     "台北"
+   ],
+   "district": [
+    "中正"
    ],
    "remote": false,
    "kind": [
@@ -1881,6 +2046,9 @@
    "city": [
     "台北"
    ],
+   "district": [
+    "中正"
+   ],
    "remote": false,
    "kind": [
     "全職"
@@ -1915,6 +2083,9 @@
   "facets": {
    "city": [
     "台北"
+   ],
+   "district": [
+    "中正"
    ],
    "remote": false,
    "kind": [
@@ -1951,6 +2122,9 @@
    "city": [
     "台北"
    ],
+   "district": [
+    "中正"
+   ],
    "remote": false,
    "kind": [
     "全職"
@@ -1985,6 +2159,9 @@
   "facets": {
    "city": [
     "台北"
+   ],
+   "district": [
+    "中正"
    ],
    "remote": false,
    "kind": [
@@ -2021,6 +2198,9 @@
    "city": [
     "台北"
    ],
+   "district": [
+    "中正"
+   ],
    "remote": false,
    "kind": [
     "全職"
@@ -2056,6 +2236,9 @@
    "city": [
     "台南"
    ],
+   "district": [
+    "永康"
+   ],
    "remote": true,
    "kind": [
     "實習",
@@ -2089,6 +2272,9 @@
   "facets": {
    "city": [
     "台南"
+   ],
+   "district": [
+    "永康"
    ],
    "remote": true,
    "kind": [
@@ -2124,6 +2310,9 @@
    "city": [
     "台南"
    ],
+   "district": [
+    "永康"
+   ],
    "remote": true,
    "kind": [
     "實習",
@@ -2158,6 +2347,9 @@
    "city": [
     "台南"
    ],
+   "district": [
+    "永康"
+   ],
    "remote": true,
    "kind": [
     "實習",
@@ -2190,6 +2382,7 @@
   },
   "facets": {
    "city": [],
+   "district": [],
    "remote": true,
    "kind": [
     "兼職"
@@ -2222,6 +2415,7 @@
   },
   "facets": {
    "city": [],
+   "district": [],
    "remote": true,
    "kind": [
     "兼職"
@@ -2254,6 +2448,7 @@
   },
   "facets": {
    "city": [],
+   "district": [],
    "remote": true,
    "kind": [
     "兼職"
@@ -2286,6 +2481,7 @@
   },
   "facets": {
    "city": [],
+   "district": [],
    "remote": true,
    "kind": [
     "兼職"
@@ -2318,6 +2514,7 @@
   },
   "facets": {
    "city": [],
+   "district": [],
    "remote": true,
    "kind": [
     "兼職"
@@ -2350,6 +2547,7 @@
   },
   "facets": {
    "city": [],
+   "district": [],
    "remote": true,
    "kind": [
     "兼職"
@@ -2382,6 +2580,7 @@
   },
   "facets": {
    "city": [],
+   "district": [],
    "remote": true,
    "kind": [
     "兼職"
@@ -2414,6 +2613,7 @@
   },
   "facets": {
    "city": [],
+   "district": [],
    "remote": true,
    "kind": [
     "兼職"
@@ -2447,6 +2647,9 @@
   "facets": {
    "city": [
     "台北"
+   ],
+   "district": [
+    "內湖"
    ],
    "remote": false,
    "kind": [
@@ -2482,6 +2685,9 @@
    "city": [
     "台北"
    ],
+   "district": [
+    "內湖"
+   ],
    "remote": false,
    "kind": [
     "全職"
@@ -2515,6 +2721,9 @@
   "facets": {
    "city": [
     "台北"
+   ],
+   "district": [
+    "內湖"
    ],
    "remote": false,
    "kind": [
@@ -2550,6 +2759,9 @@
    "city": [
     "台北"
    ],
+   "district": [
+    "內湖"
+   ],
    "remote": false,
    "kind": [
     "全職"
@@ -2583,6 +2795,9 @@
   "facets": {
    "city": [
     "台北"
+   ],
+   "district": [
+    "內湖"
    ],
    "remote": false,
    "kind": [
@@ -2618,6 +2833,9 @@
    "city": [
     "台北"
    ],
+   "district": [
+    "內湖"
+   ],
    "remote": false,
    "kind": [
     "全職"
@@ -2651,6 +2869,9 @@
   "facets": {
    "city": [
     "台北"
+   ],
+   "district": [
+    "內湖"
    ],
    "remote": false,
    "kind": [
@@ -2686,6 +2907,9 @@
    "city": [
     "台北"
    ],
+   "district": [
+    "內湖"
+   ],
    "remote": false,
    "kind": [
     "全職"
@@ -2719,6 +2943,9 @@
   "facets": {
    "city": [
     "台北"
+   ],
+   "district": [
+    "內湖"
    ],
    "remote": false,
    "kind": [
@@ -2754,6 +2981,9 @@
    "city": [
     "台北"
    ],
+   "district": [
+    "內湖"
+   ],
    "remote": false,
    "kind": [
     "全職"
@@ -2787,6 +3017,9 @@
   "facets": {
    "city": [
     "台北"
+   ],
+   "district": [
+    "內湖"
    ],
    "remote": false,
    "kind": [
@@ -2822,6 +3055,9 @@
    "city": [
     "台北"
    ],
+   "district": [
+    "內湖"
+   ],
    "remote": false,
    "kind": [
     "全職"
@@ -2855,6 +3091,9 @@
   "facets": {
    "city": [
     "台北"
+   ],
+   "district": [
+    "內湖"
    ],
    "remote": false,
    "kind": [
@@ -2890,6 +3129,9 @@
    "city": [
     "台北"
    ],
+   "district": [
+    "內湖"
+   ],
    "remote": false,
    "kind": [
     "全職"
@@ -2923,6 +3165,9 @@
   "facets": {
    "city": [
     "台北"
+   ],
+   "district": [
+    "內湖"
    ],
    "remote": false,
    "kind": [
@@ -2958,6 +3203,9 @@
    "city": [
     "台北"
    ],
+   "district": [
+    "內湖"
+   ],
    "remote": false,
    "kind": [
     "全職"
@@ -2991,6 +3239,9 @@
    "city": [
     "新北"
    ],
+   "district": [
+    "中和"
+   ],
    "remote": false,
    "kind": [
     "全職"
@@ -3022,6 +3273,9 @@
   "facets": {
    "city": [
     "新北"
+   ],
+   "district": [
+    "中和"
    ],
    "remote": false,
    "kind": [
@@ -3055,6 +3309,9 @@
    "city": [
     "新北"
    ],
+   "district": [
+    "中和"
+   ],
    "remote": false,
    "kind": [
     "全職"
@@ -3086,6 +3343,9 @@
   "facets": {
    "city": [
     "新北"
+   ],
+   "district": [
+    "中和"
    ],
    "remote": false,
    "kind": [
@@ -3119,6 +3379,9 @@
    "city": [
     "新北"
    ],
+   "district": [
+    "中和"
+   ],
    "remote": false,
    "kind": [
     "全職"
@@ -3150,6 +3413,9 @@
   "facets": {
    "city": [
     "新北"
+   ],
+   "district": [
+    "中和"
    ],
    "remote": false,
    "kind": [
@@ -3184,6 +3450,7 @@
     "台北",
     "新竹"
    ],
+   "district": [],
    "remote": false,
    "kind": [
     "全職"
@@ -3217,6 +3484,7 @@
     "台北",
     "新竹"
    ],
+   "district": [],
    "remote": false,
    "kind": [
     "全職"
@@ -3250,6 +3518,7 @@
     "台北",
     "新竹"
    ],
+   "district": [],
    "remote": false,
    "kind": [
     "全職"
@@ -3283,6 +3552,7 @@
     "台北",
     "新竹"
    ],
+   "district": [],
    "remote": false,
    "kind": [
     "全職"
@@ -3315,6 +3585,9 @@
   "facets": {
    "city": [
     "台北"
+   ],
+   "district": [
+    "內湖"
    ],
    "remote": false,
    "kind": [
@@ -3349,6 +3622,9 @@
    "city": [
     "台北"
    ],
+   "district": [
+    "內湖"
+   ],
    "remote": false,
    "kind": [
     "全職"
@@ -3381,6 +3657,9 @@
   "facets": {
    "city": [
     "台北"
+   ],
+   "district": [
+    "內湖"
    ],
    "remote": false,
    "kind": [
@@ -3415,6 +3694,9 @@
    "city": [
     "台北"
    ],
+   "district": [
+    "內湖"
+   ],
    "remote": false,
    "kind": [
     "全職"
@@ -3447,6 +3729,9 @@
   "facets": {
    "city": [
     "台北"
+   ],
+   "district": [
+    "內湖"
    ],
    "remote": false,
    "kind": [
@@ -3481,6 +3766,9 @@
    "city": [
     "台北"
    ],
+   "district": [
+    "內湖"
+   ],
    "remote": false,
    "kind": [
     "全職"
@@ -3513,6 +3801,9 @@
   "facets": {
    "city": [
     "台北"
+   ],
+   "district": [
+    "內湖"
    ],
    "remote": false,
    "kind": [
@@ -3547,6 +3838,9 @@
    "city": [
     "台北"
    ],
+   "district": [
+    "內湖"
+   ],
    "remote": false,
    "kind": [
     "全職"
@@ -3579,6 +3873,9 @@
   "facets": {
    "city": [
     "台北"
+   ],
+   "district": [
+    "內湖"
    ],
    "remote": false,
    "kind": [
@@ -3613,6 +3910,9 @@
    "city": [
     "台北"
    ],
+   "district": [
+    "內湖"
+   ],
    "remote": false,
    "kind": [
     "全職"
@@ -3645,6 +3945,9 @@
   "facets": {
    "city": [
     "台北"
+   ],
+   "district": [
+    "內湖"
    ],
    "remote": false,
    "kind": [
@@ -3679,6 +3982,9 @@
    "city": [
     "台北"
    ],
+   "district": [
+    "內湖"
+   ],
    "remote": false,
    "kind": [
     "全職"
@@ -3711,6 +4017,9 @@
   "facets": {
    "city": [
     "台北"
+   ],
+   "district": [
+    "內湖"
    ],
    "remote": false,
    "kind": [
@@ -3745,6 +4054,9 @@
    "city": [
     "台北"
    ],
+   "district": [
+    "內湖"
+   ],
    "remote": false,
    "kind": [
     "全職"
@@ -3776,6 +4088,9 @@
   "facets": {
    "city": [
     "台北"
+   ],
+   "district": [
+    "內湖"
    ],
    "remote": false,
    "kind": [
@@ -3809,6 +4124,9 @@
    "city": [
     "台北"
    ],
+   "district": [
+    "內湖"
+   ],
    "remote": false,
    "kind": [
     "全職"
@@ -3841,6 +4159,9 @@
    "city": [
     "台北"
    ],
+   "district": [
+    "內湖"
+   ],
    "remote": false,
    "kind": [
     "全職"
@@ -3872,6 +4193,9 @@
   "facets": {
    "city": [
     "台北"
+   ],
+   "district": [
+    "內湖"
    ],
    "remote": false,
    "kind": [
@@ -3906,6 +4230,9 @@
    "city": [
     "新北"
    ],
+   "district": [
+    "三重"
+   ],
    "remote": false,
    "kind": [
     "實習"
@@ -3938,6 +4265,9 @@
   "facets": {
    "city": [
     "新北"
+   ],
+   "district": [
+    "三重"
    ],
    "remote": false,
    "kind": [
@@ -3972,6 +4302,9 @@
    "city": [
     "新北"
    ],
+   "district": [
+    "三重"
+   ],
    "remote": false,
    "kind": [
     "實習"
@@ -4004,6 +4337,9 @@
   "facets": {
    "city": [
     "新北"
+   ],
+   "district": [
+    "三重"
    ],
    "remote": false,
    "kind": [
@@ -4038,6 +4374,9 @@
    "city": [
     "新北"
    ],
+   "district": [
+    "三重"
+   ],
    "remote": false,
    "kind": [
     "實習"
@@ -4070,6 +4409,9 @@
   "facets": {
    "city": [
     "新北"
+   ],
+   "district": [
+    "三重"
    ],
    "remote": false,
    "kind": [
@@ -4104,6 +4446,9 @@
    "city": [
     "新北"
    ],
+   "district": [
+    "三重"
+   ],
    "remote": false,
    "kind": [
     "實習"
@@ -4136,6 +4481,9 @@
   "facets": {
    "city": [
     "新北"
+   ],
+   "district": [
+    "三重"
    ],
    "remote": false,
    "kind": [
@@ -4170,6 +4518,9 @@
    "city": [
     "新北"
    ],
+   "district": [
+    "三重"
+   ],
    "remote": false,
    "kind": [
     "全職"
@@ -4202,6 +4553,9 @@
   "facets": {
    "city": [
     "新北"
+   ],
+   "district": [
+    "三重"
    ],
    "remote": false,
    "kind": [
@@ -4236,6 +4590,9 @@
    "city": [
     "新北"
    ],
+   "district": [
+    "三重"
+   ],
    "remote": false,
    "kind": [
     "全職"
@@ -4269,6 +4626,9 @@
    "city": [
     "新北"
    ],
+   "district": [
+    "三重"
+   ],
    "remote": false,
    "kind": [
     "全職"
@@ -4300,6 +4660,7 @@
   },
   "facets": {
    "city": [],
+   "district": [],
    "remote": true,
    "kind": [
     "實習"
@@ -4331,6 +4692,7 @@
   },
   "facets": {
    "city": [],
+   "district": [],
    "remote": true,
    "kind": [
     "實習"
@@ -4362,6 +4724,7 @@
   },
   "facets": {
    "city": [],
+   "district": [],
    "remote": true,
    "kind": [
     "實習"
@@ -4393,6 +4756,7 @@
   },
   "facets": {
    "city": [],
+   "district": [],
    "remote": true,
    "kind": [
     "實習"
@@ -4424,6 +4788,7 @@
   },
   "facets": {
    "city": [],
+   "district": [],
    "remote": false,
    "kind": [
     "全職"
@@ -4457,6 +4822,7 @@
   },
   "facets": {
    "city": [],
+   "district": [],
    "remote": false,
    "kind": [
     "全職"
@@ -4490,6 +4856,7 @@
   },
   "facets": {
    "city": [],
+   "district": [],
    "remote": false,
    "kind": [
     "全職"
@@ -4523,6 +4890,7 @@
   },
   "facets": {
    "city": [],
+   "district": [],
    "remote": false,
    "kind": [
     "全職"
@@ -4556,6 +4924,7 @@
   },
   "facets": {
    "city": [],
+   "district": [],
    "remote": false,
    "kind": [
     "全職"
@@ -4589,6 +4958,7 @@
   },
   "facets": {
    "city": [],
+   "district": [],
    "remote": false,
    "kind": [
     "全職"
@@ -4622,6 +4992,7 @@
   },
   "facets": {
    "city": [],
+   "district": [],
    "remote": false,
    "kind": [
     "全職"
@@ -4655,6 +5026,7 @@
   },
   "facets": {
    "city": [],
+   "district": [],
    "remote": false,
    "kind": [
     "全職"

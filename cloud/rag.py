@@ -13,7 +13,8 @@ from google.genai import errors, types
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "shared"))
 from knowledge import DOCS   # noqa: E402 ← 兩邊共用，見 shared/knowledge.py
-from facets import parse_query, match   # noqa: E402 ← 精確過濾，見 shared/facets.py
+from facets import parse_query, match, known_districts   # noqa: E402
+                                       # ↑ 精確過濾，見 shared/facets.py
 
 load_dotenv()
 
@@ -62,6 +63,10 @@ def embed(texts, task_type):
     return v
 
 
+# 區名詞彙表：問句裡的「內湖」沒有「區」字可當錨點，只能靠詞彙表比對。
+# 從 DOCS 長出來，所以重建 jobs.json 之後會自動跟著更新。
+DISTRICTS = known_districts(DOCS)
+
 _DOC_VECS = None            # import 時不打 API，第一次檢索才建索引
 
 
@@ -98,7 +103,7 @@ def retrieve(question, k=5, min_score=0.65, filters=None):
     """回傳 k 個「不同職缺」，不是 k 個塊。細節見 onperm/rag.py 的同名函式——
     兩邊形狀刻意保持一致，換邊只要換 sys.path 那一行。"""
     if filters is None:
-        filters = parse_query(question)
+        filters = parse_query(question, DISTRICTS)
     qv = embed([question], "RETRIEVAL_QUERY")[0]
     scores = doc_vecs() @ qv
 
