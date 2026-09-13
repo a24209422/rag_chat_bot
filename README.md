@@ -446,14 +446,28 @@ Markdown 進來會產生沒有代號也沒有 facets 的塊，那些契約會整
 
 ### 為什麼不是 Chroma
 
-140 塊的規模下 numpy 全掃是微秒級，Chroma 的價值要到十萬塊以上。而它有一個對
-這個專案很痛的限制：**metadata 只吃 str/int/float/bool，不支援 list**。這裡的
-facets 全部是多值的（`city: ["台北","新竹"]`），進 Chroma 就得攤平成
-`city_台北=True` 這種布林欄，`derive()` 與 `match()` 都要改寫——那是整個專案最
-有價值也最脆弱的一塊。
+140 塊的規模下 numpy 全掃是微秒級，Chroma 的價值要到十萬塊以上——它解決的是這個
+專案還沒遇到的問題。
+
+> **更正（2026-09-13）**：這一節原本的主要理由是「Chroma 的 metadata 只吃
+> `str/int/float/bool`，不支援 list，`city: ["台北","新竹"]` 進去要攤平成
+> `city_台北=True` 這種布林欄」。**那已經不成立**——Chroma 現在支援[陣列型
+> metadata](https://docs.trychroma.com/docs/querying-collections/metadata-filtering)，
+> 並提供 `$contains` / `$not_contains`，多值 facets 可以原樣存。
+
+換過去現在真正要付的代價是這三項：
+
+- **空陣列不被允許**。而 `derive()` 是刻意留空的（抓不到代表「資料沒寫」而不是
+  「否」），要改成整個 key 省略；`match()` 的交集語意要翻成 `$or` 串 `$contains`，
+  `test_facets.py` 跟著重寫。
+- **全文檢索是過濾，不是排序**。`$contains` / `$regex` [沒有 BM25
+  分數](https://docs.trychroma.com/docs/querying-collections/full-text-search)，
+  想做混合檢索還是得自己維護一份詞彙索引做融合。
+- **距離度量會變**（預設 L2，不是餘弦），兩邊量出來的 `min_score` 會全部失效。
+  所以真要換，順序是「先有評測集，再換」。
 
 所以抽了一層 `VectorStore` 介面、先用 numpy 實作。語料真的長到需要 HNSW 時多一個
-子類就好，上層不用動；但屆時要記得處理 facets 攤平的問題。
+子類就好，上層不用動——這個介面就是「不必現在決定」的保險。
 
 ## 測試與 lint
 
