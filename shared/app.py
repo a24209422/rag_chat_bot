@@ -10,6 +10,18 @@ from shared.api_client import ApiClient, ApiError
 from shared.llm import Usage
 
 
+def _align(prev, value, n):
+    """接上新的一輪，再對齊 history 的長度。
+
+    後端可能就地截短 history（地端有上限），而這裡是一次 append 兩則、
+    history 只從前面砍，所以取相同長度的尾段就對齊了。
+    sources 與 contradiction 共用這一份邏輯——不共用的話遲早一個對齊、
+    一個歪掉，而症狀是標記跑到別人的回答底下。
+    """
+    nxt = prev + [None, value]
+    return nxt[-n:] if n else []
+
+
 @st.cache_resource
 def get_client():
     """建一次就好——Streamlit 每次互動都會從頭重跑整支腳本。
@@ -27,13 +39,16 @@ def run(side, title):
 
     st.session_state.setdefault("history", [])   # 中性格式：role / content
     st.session_state.setdefault("sources", [])   # ← 與 history 等長；user 那格放 None
+    st.session_state.setdefault("flags", [])     # ← 同上：這一則是不是矛盾
     st.session_state.setdefault("usage", Usage())
 
     # strict=True：history 與 sources 必須等長。不加的話 zip() 會沉默截斷，
     # 症狀是來源被標到別人的回答底下——寧可當場報錯也不要默默錯位。
-    for m, src in zip(st.session_state.history, st.session_state.sources, strict=True):
+    for m, src, bad in zip(st.session_state.history, st.session_state.sources,
+                           st.session_state.flags, strict=True):
         with st.chat_message(m["role"]):         # 中性格式的 role 直接就能畫
             st.write(m["content"])
+            _warn(bad, src)
             for s in (src or []):                # user 那格是 None，不能直接迭代
                 st.caption(f"`{s['score']:.3f}` {s['label']}")
 
@@ -59,6 +74,7 @@ def run(side, title):
                     # 它後面顯示，不能取代它。
                     err = e
                 else:
+                    _warn(stream.contradiction, stream.sources)
                     for s in stream.sources:
                         st.caption(f"`{s['score']:.3f}` {s['label']}")
 
@@ -67,14 +83,29 @@ def run(side, title):
         else:
             # 後端回的 history 才是權威版本——它可能就地截短過（地端有上限）。
             st.session_state.history = stream.history
-            st.session_state.sources += [None, stream.sources]
             st.session_state.usage += stream.usage
 
-            # history 被截短時 sources 要跟著切，不然下一輪的 zip(strict=True) 會炸。
-            # 兩者都是一次 append 兩則、history 只從前面砍，取相同長度的尾段就對齊了。
+            # history 被截短時這兩個要跟著切，不然下一輪的 zip(strict=True) 會炸。
             n = len(st.session_state.history)
-            st.session_state.sources = st.session_state.sources[-n:] if n else []
+            st.session_state.sources = _align(st.session_state.sources,
+                                              stream.sources, n)
+            st.session_state.flags = _align(st.session_state.flags,
+                                            stream.contradiction, n)
 
+    _sidebar()
+
+
+def _warn(bad, sources):
+    """模型說沒有、檢索卻有。後端重問一次之後還是這樣才會走到這裡。
+
+    該相信的是來源列（見 api/schemas.py 的 Source），所以把視線導過去。
+    """
+    if bad:
+        st.warning("模型說資料裡沒有，但檢索到了 %d 筆——以下面的來源為準。"
+                   % len(sources or []))
+
+
+def _sidebar():
     # 擺在最後才畫，這樣數字包含剛才那一輪（sidebar 位置跟程式順序無關）
     st.sidebar.metric("輸入 token", st.session_state.usage.prompt)
     st.sidebar.metric("輸出 token", st.session_state.usage.output)

@@ -508,3 +508,46 @@ def test_兩條路的篩選說明也要一致():
     list(bot_s.ask_stream("台北的實習", []))
 
     assert llm_a.last["messages"] == llm_s.last["messages"]
+
+
+# ── 冗長版的拒絕（第一版偵測器被它繞過去過）──────────────────────────
+def test_contradicts_也要抓得到冗長版的拒絕():
+    """實際上線被這個繞過去過：「資料裡沒有符合南部地點要求的職缺。」
+    ——INT-01 就在台南，這句話是錯的，但第一版偵測器只認字面相等。
+    能被繞過的偵測器比沒有更危險，因為它讓人以為已經有防護。"""
+    h = [hit("INT-01")]
+
+    assert contradicts(h, "資料裡沒有符合南部地點要求的職缺。")
+    assert contradicts(h, "資料中沒有台南的職缺")
+    assert contradicts(h, "資料裡找不到符合條件的職缺。")
+
+
+def test_contradicts_提到代號就不是拒絕():
+    """第二個條件把「真的在拒絕」跟「先否定再回答」分開。"""
+    h = [hit("INT-01")]
+
+    assert not contradicts(h, "資料裡沒有台北的，但 INT-01 在台南")
+    assert not contradicts(h, "根據資料，INT-01 在台南市永康區")
+
+
+def test_ask_stream_冗長的拒絕也一個字都不會吐出去():
+    bot, llm = guarded(["資料裡沒有符合南部地點要求的職缺。", "有的，INT-01 在台南"],
+                       hits=[hit("INT-01")])
+
+    out = "".join(bot.ask_stream("南部呢？", []))
+
+    assert out == "有的，INT-01 在台南"
+    assert "資料裡沒有" not in out
+    assert llm.calls == 2
+
+
+def test_ask_stream_看到代號就放行不再押著():
+    """「資料裡沒有台北的，但 INT-01…」是正常回答：押到代號出現就要放行，
+    既不能整段吞掉，也不能判成矛盾。"""
+    text = "資料裡沒有台北的，但 INT-01 在台南，時薪 190 元"
+    bot, llm = guarded([text], hits=[hit("INT-01")])
+
+    turn = bot.ask_stream("南部呢？", [])
+
+    assert "".join(turn) == text
+    assert llm.calls == 1

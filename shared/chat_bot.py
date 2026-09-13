@@ -10,15 +10,33 @@ from shared.llm import Usage
 from shared.settings import settings
 
 NOT_FOUND = "資料裡沒有。"     # 措辭跟 SYSTEM 一致，兩條路說法才不會打架
+
+# 模型拒絕時的開頭。SYSTEM 要它講「資料裡沒有」，但小模型會自己加料——
+# 實測看過「資料裡沒有符合南部地點要求的職缺。」這種冗長版本，而它跟乾淨的
+# 那一句一樣是錯的（INT-01 就在台南）。只認字面相等會漏掉它。
+REFUSALS = ("資料裡沒有", "資料中沒有", "資料沒有", "資料裡找不到", "資料中找不到")
 FULL_TEXT_LIMIT = 5           # 超過這個數量就只給 label，不給完整職缺
 
 
 def contradicts(hits, reply):
-    """檢索撈到了東西，模型卻說「資料裡沒有」——這是矛盾，而且偵測得到。
+    """檢索撈到了東西，模型卻說「沒有」——這是矛盾，而且偵測得到。
 
     實測地端 Qwen2.5-3B 約每 10 次有 1 次這樣：【資料】裡明明就有那個職缺，
     它還是跳過去挑了 SYSTEM 裡那句話（那句話對小模型是很強的吸引子）。
     同一題跑 46 次，檢索 46 次都對，錯的一直是生成。
+
+    判斷分兩個條件，缺一不可：
+      1. 回答以「資料裡沒有」那一族的措辭開頭（見 REFUSALS）
+      2. 回答從頭到尾沒提到任何一個撈回來的代號
+
+    第 2 個條件才是關鍵，它把「真的在拒絕」跟「先否定再回答」分開：
+      「資料裡沒有台北的，但 A-01 在台南」→ 提到 A-01，是正常且正確的回答
+      「資料裡沒有符合南部地點要求的職缺。」→ 一個代號都沒有，是矛盾
+    而它剛好搭在既有的契約上——SYSTEM 本來就要求提到職缺一定要附代號。
+
+    ⚠ 第一版只認字面相等（整段就是「資料裡沒有。」），實際上線就被那個冗長
+      版本繞過去了：偵測不到 → 不重問 → 使用者看到一句假話。**能被繞過的
+      偵測器比沒有更危險**，因為它會讓人以為已經有防護。
 
     所以「來源列」跟「模型的散文」打架時該信誰，答案本來就寫在
     api/schemas.py 的 Source 上：來源列才是完整精確的清單，散文只當摘要。
@@ -37,26 +55,33 @@ def contradicts(hits, reply):
       但那時候第一次已經答錯了，用【資料】答得出來的版本仍然比一句假的
       「資料裡沒有」好。
     """
-    return bool(hits) and _bare(reply or "")
+    text = (reply or "").strip()
+    if not hits or not text.startswith(REFUSALS):
+        return False
+    return not _cites(hits, text)
 
 
-def _bare(text):
-    """模型是不是「只」吐了那一句，沒有別的內容。
-
-    不能用 startswith——「資料裡沒有台北的職缺，但新竹有 X」是正常且正確的
-    回答，把它當成矛盾才是 bug。
-    """
-    return text.strip().rstrip("。.．") == NOT_FOUND.rstrip("。")
+def _cites(hits, text):
+    """回答裡有沒有提到任何一個撈回來的代號。"""
+    return any(d.group in text for d, _ in hits)
 
 
-def _could_still_be(text):
-    """串流途中：累積到現在的字還有可能長成那一句嗎。
+def _could_still_be(text, hits=()):
+    """串流途中：到目前為止的字，還有可能是一句「沒引用代號的拒絕」嗎。
 
-    用來決定要不要先押著不吐。押著的上限就是那句話的長度（6 個字），
-    使用者感覺不出來；一旦分歧就整批補吐，正常的回答不會被延遲。
+    押著不吐是為了不讓畫面先閃過一句錯的再被換掉。兩種情況要繼續押：
+      · 還在打那個開頭（「資」「資料」…）——最多幾個字
+      · 已經是拒絕開頭，但還沒看到任何代號
+
+    看到代號就立刻放行：那代表它在回答，不是在拒絕。所以
+    「資料裡沒有台北的，但 A-01 在台南」只會被押到 A-01 出現為止。
     """
     s = text.strip()
-    return not s or NOT_FOUND.startswith(s)
+    if not s:
+        return True
+    if s.startswith(REFUSALS):
+        return not _cites(hits, s)
+    return any(o.startswith(s) for o in REFUSALS)
 
 
 class Turn:
@@ -103,7 +128,7 @@ class Turn:
                     text += piece
                     if not hold:
                         yield piece
-                    elif not _could_still_be(text):
+                    elif not _could_still_be(text, self.hits):
                         hold = False
                         yield text        # 分歧了，把押著的一次補上
             except Exception:

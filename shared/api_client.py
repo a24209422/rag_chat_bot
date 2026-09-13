@@ -33,6 +33,9 @@ class Answer:
         self.sources = payload["sources"]          # [{code, label, score}]
         self.history = payload["history"]          # 後端回的才是權威版本
         self.usage = Usage(payload["usage"]["prompt"], payload["usage"]["output"])
+        # 模型說「資料裡沒有」但 sources 不是空的。後端已經為此重問過一次，
+        # 這個旗標代表「重問完還是矛盾」——UI 該把使用者的視線導向來源列。
+        self.contradiction = payload.get("contradiction", False)
 
 
 class StreamedAnswer:
@@ -48,6 +51,7 @@ class StreamedAnswer:
         self.reply = ""
         self.usage = Usage()
         self.history = []
+        self.contradiction = False        # done 事件才知道，見 tokens()
         self._events = events
         for event, data in self._events:      # 先讀到 sources 為止
             if event == "sources":
@@ -65,6 +69,7 @@ class StreamedAnswer:
             elif event == "done":
                 self.usage = Usage(data["usage"]["prompt"], data["usage"]["output"])
                 self.history = data["history"]
+                self.contradiction = data.get("contradiction", False)
             elif event == "error":
                 # 生成中途壞掉。HTTP 狀態早就送出去了（200），所以錯誤只能
                 # 以事件的形式回來——不處理的話畫面會停在半截答案上。

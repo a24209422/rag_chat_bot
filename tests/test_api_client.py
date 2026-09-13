@@ -232,3 +232,31 @@ def test_串流端點的HTTP錯誤仍然照常處理(streamed):
     with pytest.raises(ApiError, match="用量上限") as e:
         ApiClient().stream("onperm", "q", [])
     assert e.value.status == 429
+
+
+# ── contradiction：模型說沒有但檢索有 ────────────────────────────────
+def test_contradiction_旗標要傳到UI(sent):
+    """後端已經為此重問過一次，這個旗標代表「重問完還是矛盾」。
+    UI 要據此把使用者的視線導向來源列——那才是完整精確的清單。"""
+    sent["response"] = FakeResponse(payload={**OK_PAYLOAD, "contradiction": True})
+
+    assert ApiClient().ask("onperm", "q", []).contradiction is True
+
+
+def test_後端沒給contradiction就當作沒有(sent):
+    """欄位是後來才加的。舊版後端或別的實作沒給時不該炸。"""
+    assert ApiClient().ask("onperm", "q", []).contradiction is False
+
+
+def test_串流的contradiction要到done事件才有(streamed):
+    streamed["response"] = FakeSSEResponse(
+        sse("sources", {"sources": [{"code": "INT-01", "label": "L", "score": 0.8}]})
+        + sse("token", {"text": "資料裡沒有符合南部地點要求的職缺。"})
+        + sse("done", {"usage": {"prompt": 1, "output": 1}, "history": [],
+                       "contradiction": True}))
+
+    s = ApiClient().stream("onperm", "南部呢？", [])
+    assert s.contradiction is False        # 還沒迭代，done 還沒到
+
+    list(s.tokens())
+    assert s.contradiction is True
