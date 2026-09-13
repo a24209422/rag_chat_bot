@@ -26,6 +26,7 @@ from api.schemas import (
     UploadResult,
     Usage,
 )
+from shared.chat_bot import contradicts
 from shared.ingest import docs_from_pdf, version_of
 from shared.registry import doc_id_for
 from shared.settings import settings
@@ -139,6 +140,7 @@ def chat(req: ChatRequest, factory: BotFactoryDep):
         sources=[_source(d, s) for d, s in hits],
         usage=Usage(prompt=usage.prompt, output=usage.output),
         history=[Message(**m) for m in history],
+        contradiction=contradicts(hits, reply),
     )
 
 
@@ -163,13 +165,18 @@ def chat_stream(req: ChatRequest, factory: BotFactoryDep):
         sources  檢索結果。**第一個送出**——檢索比生成快得多，UI 可以先把
                  來源列出來，不必等模型講完
         token    一段文字
-        done     usage 與更新後的 history
+        done     usage、更新後的 history，以及 contradiction
         error    生成中途壞掉。這時 HTTP 狀態已經送出去了（200），改不了，
                  所以只能用事件回報——呼叫端一定要處理這個事件
 
     連線階段的錯誤仍然是正常的 HTTP 狀態碼：下面會先「預抽」第一段，
     抽得出來才開始串流。代價是 sources 要等到模型吐第一個字才送得出去
     （實測 0.2 秒），換到的是 503/429 不會偽裝成 200。
+
+    ⚠ 偵測到矛盾而重抽時（見 shared/chat_bot.py 的 contradicts），第一段會
+      晚到整整一次生成的時間——因為那幾個字還押在 Turn 手上，沒有吐出來。
+      sources 因此也跟著延後。這是刻意的取捨：寧可慢，不要讓畫面先閃過一句
+      錯的「資料裡沒有」再被換掉。約 11% 的請求會走到這條路。
     """
     bot, history = _prepare(req, factory)
 
@@ -195,7 +202,8 @@ def chat_stream(req: ChatRequest, factory: BotFactoryDep):
             return
         yield _sse("done", {"usage": {"prompt": turn.usage.prompt,
                                       "output": turn.usage.output},
-                            "history": history})
+                            "history": history,
+                            "contradiction": contradicts(turn.hits, turn.reply)})
 
     # ⚠ charset 一定要宣告。SSE 的 text/event-stream 若沒寫 charset，HTTP 對
     #   text/* 的規定是退回 ISO-8859-1——實測 requests 就是這樣猜，中文會變成

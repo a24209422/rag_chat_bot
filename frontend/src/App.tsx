@@ -76,6 +76,7 @@ export default function App() {
               role={m.role}
               content={m.content}
               sources={chat.sources[i]}
+              contradiction={chat.flags[i]}
             />
           ))}
 

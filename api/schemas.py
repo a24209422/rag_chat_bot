@@ -55,6 +55,12 @@ class ChatResponse(BaseModel):
     usage: Usage
     history: list[Message]      # 更新後的，呼叫端直接拿去覆蓋自己那份
 
+    # 模型說「資料裡沒有」，但 sources 不是空的——兩者打架了。
+    # 後端已經為此重抽過一次（見 shared/chat_bot.py 的 contradicts），
+    # 這個旗標代表「重抽完還是矛盾」。呼叫端該做的是提醒使用者去看
+    # sources，而不是相信那句話：來源列才是完整精確的清單。
+    contradiction: bool = False
+
 
 class Health(BaseModel):
     status: Literal["ok"]

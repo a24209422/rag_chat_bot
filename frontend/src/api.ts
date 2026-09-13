@@ -89,7 +89,13 @@ export function uploadDocument(file: File) {
 interface StreamHandlers {
   onSources?: (sources: Source[]) => void;
   onToken?: (text: string) => void;
-  onDone?: (result: { usage: Usage; history: Message[] }) => void;
+  // contradiction：模型說「資料裡沒有」但 sources 不是空的。後端已經為此
+  // 重抽過一次，這個旗標代表「重抽完還是矛盾」——該提醒使用者看來源列。
+  onDone?: (result: {
+    usage: Usage;
+    history: Message[];
+    contradiction: boolean;
+  }) => void;
 }
 
 /**

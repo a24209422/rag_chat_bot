@@ -6,7 +6,7 @@
 """
 import pytest
 
-from shared.chat_bot import NOT_FOUND, ChatBot
+from shared.chat_bot import NOT_FOUND, ChatBot, contradicts
 from shared.knowledge import SYSTEM, Doc
 from shared.llm import BaseLLM, Reply, Stream, Usage
 
@@ -241,7 +241,10 @@ def test_ask_stream_跑完才補上history():
     turn = bot.ask_stream("問題", history)
     assert len(history) == 1                # 只有問題，還沒有答案
 
-    assert list(turn) == ["資料", "裡有"]
+    # 這裡驗「字有沒有全部到齊」而不是切成幾段：押字機制會把開頭合成一段
+    # ——"資料" 正好是「資料裡沒有」的前綴，要等到分歧那一刻才吐得出來。
+    # 切幾段是實作細節，全部到齊才是契約。
+    assert "".join(turn) == "資料裡有"
     assert history == [{"role": "user", "content": "問題"},
                        {"role": "assistant", "content": "資料裡有"}]
     assert turn.reply == "資料裡有"
@@ -302,6 +305,173 @@ def test_兩條路組出來的prompt一模一樣():
 
     assert llm_a.last["messages"] == llm_b.last["messages"]
     assert llm_a.last["system"] == llm_b.last["system"]
+
+
+# ══ 矛盾偵測與重抽 ════════════════════════════════════════════════════
+#
+#   實測地端 Qwen2.5-3B 同一題跑 46 次，檢索 46 次都撈到 INT-01，但約 11%
+#   的回答是「資料裡沒有」。錯的是生成不是檢索，而且那個矛盾偵測得到。
+class SequenceLLM(BaseLLM):
+    """每次呼叫吐下一段文字。用來測「第一次矛盾、第二次正常」。"""
+
+    def __init__(self, *texts, usage=Usage(10, 5)):
+        self.texts = list(texts)
+        self.usage = usage
+        self.calls = 0
+        self.seen = []                 # 每次呼叫實際收到的 messages
+
+    def _next(self):
+        text = self.texts[min(self.calls, len(self.texts) - 1)]
+        self.calls += 1
+        return text
+
+    def complete(self, messages, system, temperature=0.2):
+        self.seen.append(list(messages))
+        return Reply(self._next(), self.usage)
+
+    def stream(self, messages, system, temperature=0.2):
+        self.seen.append(list(messages))
+        text, usage = self._next(), self.usage
+
+        def gen():
+            for ch in text:            # 一個字一段，逼出押字邏輯的邊界
+                yield ch, None
+            yield None, usage
+
+        return Stream(gen())
+
+
+def guarded(texts, hits=None, **kw):
+    """預設就是「檢索撈到一筆」——矛盾要成立，hits 不能是空的。"""
+    llm = SequenceLLM(*texts)
+    hits = [hit("A-01")] if hits is None else list(hits)
+    return ChatBot(retriever=StubRetriever(hits), llm=llm, **kw), llm
+
+
+def test_contradicts_只在整段就是那一句時成立():
+    h = [hit("A-01")]
+
+    assert contradicts(h, NOT_FOUND)
+    assert contradicts(h, "  資料裡沒有  ")        # 前後空白不算內容
+    assert not contradicts(h, "資料裡沒有台北的，但 A-01 在台南")
+    assert not contradicts([], NOT_FOUND)          # 沒檢索到就不是矛盾，是實話
+
+
+def test_ask_檢索到東西卻說沒有會重抽一次():
+    bot, llm = guarded([NOT_FOUND, "A-01 在台南"])
+    history = []
+
+    reply, _, usage = bot.ask("台南有職缺嗎", history)
+
+    assert reply == "A-01 在台南"
+    assert llm.calls == 2
+    assert usage == Usage(20, 10)                  # 白跑那次也花了錢，要算進去
+    assert history[-1]["content"] == "A-01 在台南"  # 壞的那次不留在 history
+
+
+def test_ask_正常回答不會多抽():
+    bot, llm = guarded(["A-01 在台南"])
+    bot.ask("台南有職缺嗎", [])
+    assert llm.calls == 1
+
+
+def test_ask_重抽關得掉():
+    bot, llm = guarded([NOT_FOUND, "不該看到"], retry_contradiction=False)
+    reply, _, _ = bot.ask("台南有職缺嗎", [])
+    assert reply == NOT_FOUND
+    assert llm.calls == 1
+
+
+def test_ask_兩次都矛盾就認了():
+    bot, llm = guarded([NOT_FOUND, NOT_FOUND])
+
+    reply, hits, _ = bot.ask("台南有職缺嗎", [])
+
+    assert reply == NOT_FOUND
+    assert llm.calls == 2
+    assert contradicts(hits, reply)      # 呼叫端據此提醒使用者去看來源列
+
+
+def test_ask_stream_壞的那句一個字都不會吐出去():
+    """整個押字機制就是為了這件事：畫面不能先閃過一句錯的再被換掉。"""
+    bot, llm = guarded([NOT_FOUND, "有的，A-01"])
+
+    out = "".join(bot.ask_stream("台南有職缺嗎", []))
+
+    assert out == "有的，A-01"
+    assert "資料裡沒有" not in out
+    assert llm.calls == 2
+
+
+def test_ask_stream_正常回答不會被押住或吃掉():
+    bot, llm = guarded(["有的，A-01 在台南"])
+    turn = bot.ask_stream("台南有職缺嗎", [])
+
+    assert "".join(turn) == "有的，A-01 在台南" == turn.reply
+    assert llm.calls == 1
+
+
+def test_ask_stream_開頭像那一句但後面有接下去的不算矛盾():
+    """「資料裡沒有台北的，但…」是正常且正確的回答，押著的字要原封不動補吐。"""
+    text = "資料裡沒有台北的，但 A-01 在台南"
+    bot, llm = guarded([text])
+
+    assert "".join(bot.ask_stream("問題", [])) == text
+    assert llm.calls == 1
+
+
+def test_ask_stream_兩次都矛盾還是要把那一句吐出來():
+    bot, llm = guarded([NOT_FOUND, NOT_FOUND])
+    turn = bot.ask_stream("問題", [])
+
+    out = "".join(turn)
+
+    assert out == NOT_FOUND          # 不能什麼都不吐，畫面會是空白
+    assert llm.calls == 2
+    assert contradicts(turn.hits, turn.reply)
+
+
+def test_ask_stream_重抽的usage兩次都算():
+    bot, _ = guarded([NOT_FOUND, "有的"])
+    turn = bot.ask_stream("問題", [])
+    list(turn)
+    assert turn.usage == Usage(20, 10)
+
+
+def test_ask_stream_沒檢索到就不押字行為完全不變():
+    """沒有 hits 不可能矛盾。這條路要跟加這個機制之前一模一樣。"""
+    bot, llm = guarded([NOT_FOUND], hits=())
+    history = [{"role": "user", "content": "前"},
+               {"role": "assistant", "content": "後"}]
+
+    assert "".join(bot.ask_stream("問題", history)) == NOT_FOUND
+    assert llm.calls == 1
+
+
+def test_重抽時丟掉history只留這一輪的資料():
+    """原樣重抽沒有用——實測同一題原樣重抽 12 次有 7 次抽到同樣那句話。
+    要換掉輸入才換得到不同的答案，而汙染源就是上一輪那段長對話。"""
+    bot, llm = guarded([NOT_FOUND, "A-01 在台南"])
+    history = [{"role": "user", "content": "台北有職缺嗎"},
+               {"role": "assistant", "content": "很長的台北職缺清單…"}]
+
+    bot.ask("台南有職缺嗎", history)
+
+    assert len(llm.seen[0]) == 3               # 第一次：上一輪兩則 + 這一輪
+    assert len(llm.seen[1]) == 1               # 重抽：只剩這一輪
+    assert "【資料】" in llm.seen[1][0]["content"]
+    assert "台南有職缺嗎" in llm.seen[1][0]["content"]
+
+
+def test_ask_stream_重抽也丟掉history():
+    bot, llm = guarded([NOT_FOUND, "有的，A-01"])
+    history = [{"role": "user", "content": "台北有職缺嗎"},
+               {"role": "assistant", "content": "很長的台北職缺清單…"}]
+
+    list(bot.ask_stream("台南有職缺嗎", history))
+
+    assert len(llm.seen[0]) == 3
+    assert len(llm.seen[1]) == 1
 
 
 # ── 有過濾條件時要講給模型聽 ──────────────────────────────────────────
