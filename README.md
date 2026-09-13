@@ -131,6 +131,34 @@ python -m tools.build_jobs "<職缺 PDF 資料夾>"
 
 > ⚠ 重建 `jobs.json` 之後要重跑 `tools/probe_threshold.py`。兩邊的 `min_score` 都是對「這批」資料量出來的，不是通用常數。
 
+## 一鍵啟動
+
+下面兩節是手動跑法，也是出事時該懂的那一層。日常開起來看的話用腳本：
+
+```powershell
+.\start.ps1            # 後端 + 前端，雲端（Gemini）可用
+.\start.ps1 -Local     # 再帶上 llama.cpp server，地端推論才跑得動
+.\start.ps1 -Stop      # 通通關掉
+```
+
+雙擊 `start.bat` 等同第一個。
+
+腳本沒有做任何新的事，只是把手動指令綁在一起，外加三件手動時容易忘的：
+
+- **埠已經有人在聽就沿用**，不會開第二份
+- **`-Local` 會設 `API_WARM=onperm`**。預熱做的是把 e5 載進記憶體（第一個請求
+  47.6 秒 → 2.6 秒），不是重算索引——索引本來就在 `data/store_onperm.npz` 裡
+- **不加 `--reload`**。它會多一個 reloader 子行程，關的時候殺了父的還留著子的。
+  要改程式碼還是自己開 `uvicorn --reload`
+
+`-Local` 要先在 `.env` 補 llama.cpp 的執行檔與模型路徑（格式見 `.env.example`）：
+每台機器都不一樣，所以不寫死在腳本裡。`-c 8192 -ngl 99` 反過來是寫死的——那兩個
+不是偏好，理由見下面的地端版那節。
+
+> ⚠ `start.ps1` 必須存成 **UTF-8 with BOM**。Windows PowerShell 5.1 讀 `.ps1` 用
+> 系統 ANSI（這台機器是 cp950），沒有 BOM 的話中文註解與畫面訊息全部變亂碼。
+> 編輯器另存新檔時很容易把它弄掉，而症狀跟程式邏輯無關，會找很久。
+
 ## 雲端版（Gemini）
 
 1. 到 [Google AI Studio](https://aistudio.google.com/apikey) 申請 API key
