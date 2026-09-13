@@ -34,6 +34,10 @@ Thumbs.db
 .tmp.drivedownload/
 .tmp.driveupload/
 
+# 工具自己的設定，跟著機器走不跟著專案走
+.claude/
+.obsidian/
+
 # 個人開發筆記，留在本機不進版控（已從 git 歷史中移除）
 地端改動.md
 檢索改動.md
