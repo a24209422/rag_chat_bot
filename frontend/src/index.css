@@ -203,6 +203,7 @@ button:active:not(:disabled) {
 button:focus-visible,
 input:focus-visible,
 textarea:focus-visible,
+summary:focus-visible,
 label:focus-within {
   outline: 2px solid var(--primary-focus);
   outline-offset: 2px;
@@ -494,6 +495,18 @@ label:focus-within {
   padding-bottom: var(--s-xs);
 }
 
+/* 第一個字還沒到的那段空窗。地端可能等上幾十秒，完全靜止的一行看起來像當掉，
+   所以讓它慢慢呼吸——比 caret 的 steps(2) 硬閃溫和，reduced-motion 會關掉。 */
+.thinking {
+  color: var(--text-muted);
+  animation: breathe 1.6s ease-in-out infinite;
+}
+@keyframes breathe {
+  50% {
+    opacity: 0.45;
+  }
+}
+
 .caret::after {
   content: "";
   display: inline-block;
@@ -517,9 +530,37 @@ label:focus-within {
   margin-top: var(--s-lg);
   border-top: 1px solid var(--rule-soft);
 }
+/* 收合列。<summary> 預設的三角形兩邊瀏覽器長得不一樣，關掉換自己畫的
+   chevron——一個轉 45 度的方角，展開時再轉 90 度。 */
 .sources-head {
   color: var(--text-muted);
   padding: var(--s-sm) 0 var(--s-xs);
+  display: flex;
+  align-items: center;
+  gap: var(--s-xs);
+  cursor: pointer;
+  list-style: none;              /* Firefox */
+  user-select: none;
+}
+.sources-head::-webkit-details-marker {
+  display: none;                 /* Safari */
+}
+.sources-head::before {
+  content: "";
+  flex: none;
+  width: 6px;
+  height: 6px;
+  border-right: 1.5px solid currentColor;
+  border-bottom: 1.5px solid currentColor;
+  transform: translateY(-1px) rotate(-45deg);
+  transition: transform 0.2s ease;
+}
+.sources[open] > .sources-head::before {
+  transform: translateY(-2px) rotate(45deg);
+}
+/* 可點的東西一律是那一個藍——平常維持灰，免得每則回答底下都掛一行藍字。 */
+.sources-head:hover {
+  color: var(--link);
 }
 .source {
   display: flex;
