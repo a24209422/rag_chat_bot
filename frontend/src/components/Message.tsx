@@ -25,17 +25,23 @@ export function Message({ role, content, sources, contradiction, streaming }: Pr
         <div className={`text${streaming ? " caret" : ""}`}>{content}</div>
 
         {/* 來源列：這一列才是完整且精確的清單。模型的散文只當摘要看——實測
-            3B 模型被要求列 20 筆時只列得出 16~17 筆，而且常常不附代號。 */}
+            3B 模型被要求列 20 筆時只列得出 16~17 筆，而且常常不附代號。
+
+            生成期間只留「檢索到 N 筆」那一行，清單等吐完字再展開。sources
+            事件比 token 先到（檢索快得多），照實畫的話畫面會先長出一張表，
+            答案再從表的上面慢慢擠出來——先看到的東西反而不是重點。筆數那
+            一行留著：它是「檢索有撈到東西」的即時回饋，一行不搶戲。 */}
         {hasSources && (
           <div className="sources">
             <div className="sources-head t-caption-strong">檢索到 {sources.length} 筆</div>
-            {sources.map((s) => (
-              <div className="source t-caption" key={s.code}>
-                <span className="code">{s.code}</span>
-                <span className="label">{trimCode(s.label, s.code)}</span>
-                <span className="score">{s.score.toFixed(3)}</span>
-              </div>
-            ))}
+            {!streaming &&
+              sources.map((s) => (
+                <div className="source t-caption" key={s.code}>
+                  <span className="code">{s.code}</span>
+                  <span className="label">{trimCode(s.label, s.code)}</span>
+                  <span className="score">{s.score.toFixed(3)}</span>
+                </div>
+              ))}
           </div>
         )}
       </div>
