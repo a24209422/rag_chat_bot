@@ -29,12 +29,16 @@ class FakeLLM(BaseLLM):
 
 
 class StubRetriever:
-    def __init__(self, hits, filters=None):
+    def __init__(self, hits, filters=None, terms=None):
         self.hits = hits
         self.filters = filters or {}
+        self.terms = terms or []          # 問句裡出現的原字，重問補句用
 
     def filters_for(self, question):
         return self.filters
+
+    def terms_for(self, question):
+        return self.terms
 
     def retrieve(self, question, k=5, filters=None):
         return self.hits[:k]
@@ -46,9 +50,10 @@ def hit(code):
     return (d, 0.9)
 
 
-def make(hits=(), filters=None, **kw):
+def make(hits=(), filters=None, terms=None, **kw):
     llm = kw.pop("llm", None) or FakeLLM()
-    return ChatBot(retriever=StubRetriever(list(hits), filters), llm=llm, **kw), llm
+    return ChatBot(retriever=StubRetriever(list(hits), filters, terms),
+                   llm=llm, **kw), llm
 
 
 # ── 短路 ──────────────────────────────────────────────────────────────
@@ -218,9 +223,10 @@ class FakeStreamLLM(BaseLLM):
         return self.calls[-1]
 
 
-def make_stream(hits=(), filters=None, **kw):
+def make_stream(hits=(), filters=None, terms=None, **kw):
     llm = kw.pop("llm", None) or FakeStreamLLM()
-    return ChatBot(retriever=StubRetriever(list(hits), filters), llm=llm, **kw), llm
+    return ChatBot(retriever=StubRetriever(list(hits), filters, terms),
+                   llm=llm, **kw), llm
 
 
 def test_ask_stream_的hits馬上就有():
@@ -341,11 +347,11 @@ class SequenceLLM(BaseLLM):
         return Stream(gen())
 
 
-def guarded(texts, hits=None, **kw):
+def guarded(texts, hits=None, terms=None, **kw):
     """預設就是「檢索撈到一筆」——矛盾要成立，hits 不能是空的。"""
     llm = SequenceLLM(*texts)
     hits = [hit("A-01")] if hits is None else list(hits)
-    return ChatBot(retriever=StubRetriever(hits), llm=llm, **kw), llm
+    return ChatBot(retriever=StubRetriever(hits, terms=terms), llm=llm, **kw), llm
 
 
 def test_contradicts_只在整段就是那一句時成立():
@@ -448,9 +454,11 @@ def test_ask_stream_沒檢索到就不押字行為完全不變():
     assert llm.calls == 1
 
 
-def test_重抽時丟掉history只留這一輪的資料():
-    """原樣重抽沒有用——實測同一題原樣重抽 12 次有 7 次抽到同樣那句話。
-    要換掉輸入才換得到不同的答案，而汙染源就是上一輪那段長對話。"""
+def test_重問補不出問句時退回丟掉history():
+    """沒有可比對的詞（「那薪水呢？」）就組不出完整問句，退回舊做法。
+
+    原樣重抽沒有用——實測同一題原樣重抽 12 次有 7 次抽到同樣那句話，
+    要換掉輸入才換得到不同的答案。"""
     bot, llm = guarded([NOT_FOUND, "A-01 在台南"])
     history = [{"role": "user", "content": "台北有職缺嗎"},
                {"role": "assistant", "content": "很長的台北職缺清單…"}]
@@ -551,3 +559,36 @@ def test_ask_stream_看到代號就放行不再押著():
 
     assert "".join(turn) == text
     assert llm.calls == 1
+
+
+# ── 重問：把省略式問句補成完整問句 ───────────────────────────────────
+def test_重問時把省略式問句補成完整問句():
+    """省略式問句是這個 bug 唯一確定的變因。實測同樣的 history 與【資料】，
+    只換送進生成的那一行【問題】：
+
+        南部呢？          6 次全部答「資料裡沒有」
+        南部有哪些職缺？   6 次全對
+    """
+    bot, llm = guarded([NOT_FOUND, "南部的職缺有 INT-01"],
+                       hits=[hit("INT-01")], terms=["南部"])
+    history = [{"role": "user", "content": "台北呢"},
+               {"role": "assistant", "content": "很長的台北職缺清單…"}]
+
+    bot.ask("南部呢？", history)
+
+    assert llm.seen[0][-1]["content"].endswith("南部呢？")          # 第一次照原話
+    assert llm.seen[1][-1]["content"].endswith("南部有哪些職缺？")   # 重問補齊
+    assert len(llm.seen[1]) == 3      # history 留著——實測就是這個組合
+
+
+def test_兩條路的重問內容也要一致():
+    """ask 與 ask_stream 共用 _retry_send，不會有一邊改了另一邊忘了。"""
+    kw = {"hits": [hit("INT-01")], "terms": ["南部"]}
+    bot_a, llm_a = guarded([NOT_FOUND, "有的"], **kw)
+    bot_s, llm_s = guarded([NOT_FOUND, "有的"], **kw)
+    bot_s.llm = llm_s
+
+    bot_a.ask("南部呢？", [])
+    list(bot_s.ask_stream("南部呢？", []))
+
+    assert llm_a.seen[1] == llm_s.seen[1]

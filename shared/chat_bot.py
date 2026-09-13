@@ -4,7 +4,7 @@
 #       retriever  CloudRetriever / OnpremRetriever（差在 embed 與 min_score）
 #       llm        GeminiLLM / LlamaCppLLM（差在線路格式與 usage 怎麼讀）
 #   加第三家就是傳一個新的 llm 進來，這個檔案不用動。
-from shared.facets import describe
+from shared.facets import as_question, describe
 from shared.knowledge import SYSTEM
 from shared.llm import Usage
 from shared.settings import settings
@@ -170,13 +170,13 @@ class ChatBot:
         self.k = k if k is not None else cfg.retrieve_k
         self.history_limit = history_limit        # None = 不砍
         self.temperature = temperature if temperature is not None else cfg.temperature
-        # 偵測到矛盾就丟掉 history 再問一次（見 contradicts）。
+        # 偵測到矛盾就換掉輸入再問一次（見 contradicts 與 _retry_send）。
         # 可以關掉是為了測試——要驗「不重抽會怎樣」就得關得掉。
         self.retry_contradiction = retry_contradiction
 
     def ask(self, user, history, k=None):
         """一次回完。回傳 (reply, hits, usage)。"""
-        hits, to_send = self._prepare(user, history, k)
+        hits, to_send, retry_send = self._prepare(user, history, k)
         if to_send is None:                       # 離題短路，沒打生成
             return NOT_FOUND, hits, Usage()
 
@@ -184,9 +184,9 @@ class ChatBot:
             reply = self._generate(to_send)
             usage = reply.usage
             if self.retry_contradiction and contradicts(hits, reply.text):
-                # 只留最後一則（【資料】+【問題】）。原樣重抽沒有用，理由見
-                # contradicts()——要換掉輸入才換得到不同的答案。
-                again = self._generate(to_send[-1:])
+                # 換掉輸入再問一次——原樣重抽沒有用，理由見 contradicts()。
+                # 換什麼由 _retry_send 決定。
+                again = self._generate(retry_send)
                 usage = usage + again.usage       # 白跑那次也計費，不能藏起來
                 reply = again
         except Exception:
@@ -206,7 +206,7 @@ class ChatBot:
         history 要等串流「跑完」才補上回答——中途斷掉的話會把問題收回去，
         跟 ask() 失敗時的行為一致。
         """
-        hits, to_send = self._prepare(user, history, k)
+        hits, to_send, retry_send = self._prepare(user, history, k)
         if to_send is None:
             return Turn(hits, reply=NOT_FOUND)    # 已完成，迭代會吐出那一句
 
@@ -219,9 +219,9 @@ class ChatBot:
         except Exception:
             history.pop()      # 連線階段就失敗（例如 server 沒開）
             raise
-        # 重抽刻意不帶 history，只留【資料】+【問題】。理由見 contradicts()。
+        # 重問送的是換過的輸入，不是同一份再抽一次。見 _retry_send。
         return Turn(hits, stream=stream, history=history,
-                    retry=(lambda: open_stream(to_send[-1:]))
+                    retry=(lambda: open_stream(retry_send))
                     if self.retry_contradiction else None)
 
     def _prepare(self, user, history, k):
@@ -239,7 +239,7 @@ class ChatBot:
             # 檢索分數本來就低）交給模型判斷，短路會誤殺。
             history.append({"role": "user", "content": user})
             history.append({"role": "assistant", "content": NOT_FOUND})
-            return hits, None
+            return hits, None, None
 
         # 有過濾條件就講給模型聽。它不知道「台南算南部」，而過濾已經替它
         # 判斷過了——不說的話它會自己再判一次而且判錯（見 facets.describe）。
@@ -247,16 +247,38 @@ class ChatBot:
         if filters:
             note = ("（【資料】已依「%s」篩選完畢，列出的就是全部符合的職缺。）\n"
                     % describe(filters))
-        prompt = "【資料】\n%s\n\n%s【問題】\n%s" % (
-            self._context(hits), note, user)
+        context = self._context(hits)
 
         history.append({"role": "user", "content": user})     # 歷史存乾淨的
         if self.history_limit and len(history) > self.history_limit:
             del history[:-self.history_limit]
 
         to_send = list(history)                               # ← 分離送出的版本
-        to_send[-1] = {"role": "user", "content": prompt}     # 只有這一輪帶【資料】
-        return hits, to_send
+        to_send[-1] = {"role": "user",                        # 只有這一輪帶【資料】
+                       "content": self._prompt(context, note, user)}
+        return hits, to_send, self._retry_send(to_send, context, note, user)
+
+    def _retry_send(self, to_send, context, note, user):
+        """偵測到矛盾時要改送什麼（見 contradicts）。
+
+        優先把省略式問句補成完整問句，**history 留著**——實測就是這個組合：
+            南部呢？          6 次全部答「資料裡沒有」
+            南部有哪些職缺？   6 次全對
+        兩組的 history 與【資料】完全一樣，只差送進生成的那一行【問題】。
+
+        補不出來的就退回舊做法（丟掉 history 只留這一輪）：「那薪水呢？」
+        抽不到任何可比對的詞，組不出問句。那條路的證據比較弱，但聊勝於無。
+        """
+        asked = as_question(self.retriever.terms_for(user))
+        if asked is None:
+            return to_send[-1:]
+        return to_send[:-1] + [{"role": "user",
+                                "content": self._prompt(context, note, asked)}]
+
+    @staticmethod
+    def _prompt(context, note, question):
+        return "【資料】\n%s\n\n%s【問題】\n%s" % (
+            context, note, question)
 
     @staticmethod
     def _context(hits):

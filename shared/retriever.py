@@ -12,7 +12,7 @@
 #   測試也能各建各的、互不污染。
 import numpy as np
 
-from shared.facets import known_districts, match, parse_query
+from shared.facets import known_districts, match, parse_query, terms_in
 from shared.knowledge import Doc, default_docs
 from shared.store import NumpyStore
 
@@ -74,6 +74,14 @@ class BaseRetriever:
         （見 shared/facets.py 的 describe）。
         """
         return parse_query(question, self.districts)
+
+    def terms_for(self, question):
+        """問句裡出現的那幾個詞（使用者原本打的字）。
+
+        跟 filters_for 成對：一個給檢索（正規化後的值），一個給重問時把
+        省略式問句補齊（原字）。見 shared/facets.py 的 terms_in。
+        """
+        return terms_in(question, self.districts)
 
     def doc_vecs(self):
         """整個索引的向量。給 tools/probe_threshold.py 用。"""

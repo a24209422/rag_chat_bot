@@ -7,11 +7,13 @@
 import pytest
 
 from shared.facets import (
+    as_question,
     derive,
     describe,
     known_districts,
     match,
     parse_query,
+    terms_in,
 )
 from shared.knowledge import Doc
 
@@ -184,3 +186,29 @@ def test_describe_把條件講成人話():
     assert describe({"city": ["台南", "高雄"]}) == "地點＝台南／高雄"
     assert describe({"remote": True}) == "可遠端＝是"
     assert describe({"city": ["台北"], "kind": ["實習"]}) == "地點＝台北、工作性質＝實習"
+
+
+# ── 補句用的原字（跟 parse_query 相反：它回正規化值，這裡回原字）────────
+def test_terms_in_保留使用者原本打的字():
+    """parse_query 把「南部」正規化成嘉義／台南／高雄／屏東，原字就丟了。
+    但補句要用原字——「南部有哪些職缺？」才是實測 6/6 對的那一句，
+    「嘉義、台南、高雄、屏東有哪些職缺？」是另一句話，沒被驗證過。"""
+    assert terms_in("南部呢？") == ["南部"]
+    assert terms_in("台北的實習呢") == ["台北", "實習"]
+    assert terms_in("內湖呢", districts=["內湖", "三重"]) == ["內湖"]
+
+
+def test_terms_in_照問句裡出現的順序():
+    assert terms_in("實習，台北的") == ["實習", "台北"]
+
+
+def test_terms_in_抽不到詞就是空的():
+    """「那薪水呢？」沒有任何可比對的詞，補句這條路幫不上——
+    呼叫端要有退路（見 chat_bot._retry_send）。"""
+    assert terms_in("那薪水呢？") == []
+
+
+def test_as_question_組成獨立可讀的問句():
+    assert as_question(["南部"]) == "南部有哪些職缺？"
+    assert as_question(["台北", "實習"]) == "台北、實習有哪些職缺？"
+    assert as_question([]) is None

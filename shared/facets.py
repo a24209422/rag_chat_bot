@@ -145,6 +145,44 @@ def parse_query(q, districts=()):
     return f
 
 
+def terms_in(q, districts=()):
+    """問句裡實際出現的那幾個詞，照它們在問句中的順序，**保留使用者原本打的字**。
+
+    跟 parse_query 是一對，但用途相反：parse_query 回正規化之後的值（「南部」
+    變成嘉義／台南／高雄／屏東），給檢索用；這裡回原字，給「把省略式問句補成
+    完整問句」用。
+
+    為什麼一定要原字：實測（地端 Qwen2.5-3B，同樣的 history 與【資料】，
+    只換【問題】那一行）
+
+        南部呢？            6 次全部答「資料裡沒有」
+        南部有哪些職缺？     6 次全對
+
+    補成「嘉義、台南、高雄、屏東有哪些職缺？」是另一句話，沒被驗證過；
+    補成「南部有哪些職缺？」才是量過的那一句。
+    """
+    words = ([*REGION] + [w for v in CITY.values() for w in v]
+             + [w for v in KIND.values() for w in v]
+             + [w for v in DEGREE.values() for w in v]
+             + list(REMOTE) + list(districts))
+    low = q.lower()
+    found = {}                      # 出現位置 → 原字；同一個位置只留最長的
+    for w in words:
+        i = low.find(w.lower())
+        if i >= 0 and len(w) > len(found.get(i, "")):
+            found[i] = q[i:i + len(w)]      # 切原字，大小寫照使用者寫的
+    return [found[i] for i in sorted(found)]
+
+
+def as_question(terms):
+    """把那些詞組成一個獨立可讀的問句。抽不出詞就回 None。
+
+    「那薪水呢？」這種沒有任何可比對的詞，這條路幫不上——呼叫端要有別的
+    退路（見 shared/chat_bot.py 的重問）。
+    """
+    return "、".join(terms) + "有哪些職缺？" if terms else None
+
+
 LABEL = {"city": "地點", "district": "行政區", "kind": "工作性質",
          "degree": "學歷", "remote": "可遠端"}
 
