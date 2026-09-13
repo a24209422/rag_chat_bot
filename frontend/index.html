@@ -4,6 +4,18 @@
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!-- 導覽列是純黑，行動版的瀏覽器外框跟著黑，才不會在頂端露出一條白邊 -->
+    <meta name="theme-color" content="#000000" />
+    <!-- macOS/iOS 會用系統的 SF Pro（CSS 的 -apple-system 排在第一個），
+         其他平台退到 Inter——設計文件指定的開源替代品。載不到就再往後退到
+         system-ui，畫面只是少一點「Apple 味」，不會壞。中文字一律由系統字型
+         接手（蘋方／思源／微軟正黑），Inter 沒有中文字。 -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap"
+    />
     <title>媒合會職缺查詢</title>
   </head>
   <body>

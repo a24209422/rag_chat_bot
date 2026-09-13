@@ -1,257 +1,879 @@
-/* 全域樣式。用 CSS 變數而不是 Tailwind——這個規模用不到一整套 utility class，
-   而且少一層 build 外掛。亮/暗跟著系統走。 */
+/* 全域樣式。設計語彙照 DESIGN-apple.md 實作：
+     · 單一強調色 Action Blue #0066cc，所有「可點」訊號都是它，沒有第二色。
+     · 內文 17px / 1.47 / -0.374px——不是 16px，那一格像素就是這套系統的閱讀節奏。
+     · 底色羊皮紙 #f5f5f7 配白卡（18px 圓角 + 1px 髮絲線），卡片不打陰影。
+       整套系統只有一個陰影，而且保留給「產品照」；這個介面沒有產品照，
+       所以一個陰影都沒有。層次靠換底色與 backdrop-blur 做。
+     · 圓角語彙不混用：8px 工具鈕、11px 珍珠膠囊、18px 卡片、pill 只給行動鈕。
+   亮/暗跟系統走。暗色用文件裡的近黑磚色（#272729 / #2a2a2c / #252527），
+   深色底上的連結換成 Sky Link Blue #2997ff——Action Blue 在近黑上會消失。 */
+
 :root {
-  --bg: #f6f7f9;
-  --panel: #ffffff;
-  --border: #e2e5ea;
-  --text: #1b1f24;
-  --muted: #6b7280;
-  --accent: #2563eb;
-  --accent-soft: #eff4ff;
-  --user-bg: #2563eb;
-  --user-text: #ffffff;
-  --danger: #b42318;
-  --danger-soft: #fef3f2;
-  --warn: #92400e;
-  --warn-soft: #fffbeb;
-  --radius: 10px;
+  /* ── 色票（照 DESIGN-apple.md 的 colors 原樣搬過來，不改 hex）────── */
+  --primary: #0066cc;
+  --primary-focus: #0071e3;
+  --primary-on-dark: #2997ff;
+  --ink: #1d1d1f;
+  --body-on-dark: #ffffff;
+  --body-muted: #cccccc;
+  --ink-muted-80: #333333;
+  --ink-muted-48: #7a7a7a;
+  --divider-soft: #f0f0f0;
+  --hairline: #e0e0e0;
+  --canvas: #ffffff;
+  --canvas-parchment: #f5f5f7;
+  --surface-pearl: #fafafc;
+  --tile-1: #272729;
+  --tile-2: #2a2a2c;
+  --tile-3: #252527;
+  --surface-black: #000000;
+
+  /* ── 角色（畫面真正用的是這一層，暗色模式只換這裡）──────────────── */
+  --ground: var(--canvas-parchment);
+  --card: var(--canvas);
+  --text: var(--ink);
+  --text-soft: var(--ink-muted-80);
+  --text-muted: var(--ink-muted-48);
+  --rule: var(--hairline);
+  --rule-soft: var(--divider-soft);
+  --link: var(--primary);
+  --frost: rgba(245, 245, 247, 0.8);
+  /* 警示用「換底色」而不是換強調色：文件 Iteration Guide 第 7 條——要強調
+     就先翻面（亮磚↔暗磚），不要加 chrome。錯誤與警示因此是一塊反色磚。 */
+  --inset: var(--tile-1);
+  --inset-text: var(--body-on-dark);
+  --inset-muted: var(--body-muted);
+  --inset-link: var(--primary-on-dark);
+
+  /* ── 圓角 ────────────────────────────────────────────────────────── */
+  --r-xs: 5px;
+  --r-sm: 8px;
+  --r-md: 11px;
+  --r-lg: 18px;
+  --r-pill: 9999px;
+
+  /* ── 間距（基準 8px；17px 那一格是內文列高帶出來的）───────────────── */
+  --s-xxs: 4px;
+  --s-xs: 8px;
+  --s-sm: 12px;
+  --s-md: 17px;
+  --s-lg: 24px;
+  --s-xl: 32px;
+  --s-xxl: 48px;
+  --s-section: 80px;
+
+  /* ── 字體 ────────────────────────────────────────────────────────── */
+  /* -apple-system 在 macOS/iOS 上解析成真正的 SF Pro；其他平台退到 Inter
+     （文件指定的開源替代品）。Inter 沒有中文字，中文會再往後退到
+     蘋方／思源／微軟正黑——所以中文字型一定要排在 sans-serif 之前。 */
+  --font-display: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Inter",
+    system-ui, "PingFang TC", "Noto Sans TC", "Microsoft JhengHei", sans-serif;
+  --font-text: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Inter",
+    system-ui, "PingFang TC", "Noto Sans TC", "Microsoft JhengHei", sans-serif;
+
   color-scheme: light;
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --bg: #14161a;
-    --panel: #1c1f24;
-    --border: #2c3037;
-    --text: #e8eaed;
-    --muted: #9aa2ae;
-    --accent: #6ea8fe;
-    --accent-soft: #1e2836;
-    --user-bg: #2f5fd0;
-    --user-text: #ffffff;
-    --danger: #ff9b91;
-    --danger-soft: #3a1d1a;
-    --warn: #fbbf24;
-    --warn-soft: #2b2313;
+    --ground: var(--tile-3);
+    --card: var(--tile-1);
+    --text: var(--body-on-dark);
+    --text-soft: var(--body-muted);
+    --text-muted: #8e8e93;
+    /* 近黑磚上沒有髮絲線色票可用（文件只給了亮面的 #e0e0e0），
+       用白色低透明度自己兜一條，亮度階差跟亮面那條對齊。 */
+    --rule: rgba(255, 255, 255, 0.14);
+    --rule-soft: rgba(255, 255, 255, 0.08);
+    --link: var(--primary-on-dark);
+    --frost: rgba(42, 42, 44, 0.8);
+    /* 暗色模式下警示反過來翻成亮磚——邏輯一樣：換底色就是強調。 */
+    --inset: var(--canvas-parchment);
+    --inset-text: var(--ink);
+    --inset-muted: var(--ink-muted-80);
+    --inset-link: var(--primary);
     color-scheme: dark;
   }
 }
 
-* { box-sizing: border-box; }
+* {
+  box-sizing: border-box;
+}
 
 body {
   margin: 0;
-  background: var(--bg);
+  background: var(--ground);
   color: var(--text);
-  font: 15px/1.6 "Noto Sans TC", "Microsoft JhengHei", system-ui, -apple-system, sans-serif;
+  font-family: var(--font-text);
+  font-size: 17px;
+  font-weight: 400;
+  line-height: 1.47;
+  letter-spacing: -0.374px;
+  -webkit-font-smoothing: antialiased;
+  /* Inter 的 ss03 讓 a 的字形接近 SF Pro——SF Pro 在場時這行沒有作用。 */
+  font-feature-settings: "ss03";
 }
 
-button {
-  font: inherit;
+/* ── 字級（表在 DESIGN-apple.md 的 typography）───────────────────────── */
+.t-hero {
+  font-family: var(--font-display);
+  font-size: 56px;
+  font-weight: 600;
+  line-height: 1.07;
+  letter-spacing: -0.28px;
+  margin: 0;
+}
+.t-display {
+  font-family: var(--font-display);
+  font-size: 40px;
+  font-weight: 600;
+  line-height: 1.1;
+  margin: 0;
+}
+.t-lead {
+  font-family: var(--font-display);
+  font-size: 28px;
+  font-weight: 400;
+  line-height: 1.14;
+  letter-spacing: 0.196px;
+  margin: 0;
+}
+.t-tagline {
+  font-family: var(--font-display);
+  font-size: 21px;
+  font-weight: 600;
+  line-height: 1.19;
+  letter-spacing: 0.231px;
+  margin: 0;
+}
+.t-body-strong {
+  font-size: 17px;
+  font-weight: 600;
+  line-height: 1.24;
+}
+.t-caption {
+  font-size: 14px;
+  font-weight: 400;
+  line-height: 1.43;
+  letter-spacing: -0.224px;
+}
+.t-caption-strong {
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.29;
+  letter-spacing: -0.224px;
+}
+.t-fine {
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 1.5;
+  letter-spacing: -0.12px;
+}
+
+.muted {
+  color: var(--text-muted);
+}
+.nums {
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── 按鈕：兩種文法。pill 是「行動」，8px 方角是「工具」。不混用。 ──── */
+/* .btn-pearl 也掛在 <span> 上（藏起來的 file input 需要 label 包著），
+   所以字體、游標、按下動畫這些基本設定要一起給它。 */
+button,
+.btn-pearl {
+  font-family: var(--font-text);
   cursor: pointer;
-  border-radius: 8px;
-  border: 1px solid var(--border);
-  background: var(--panel);
+  border: none;
+  background: none;
+  color: inherit;
+  transition:
+    transform 0.14s ease,
+    background-color 0.14s ease,
+    color 0.14s ease,
+    border-color 0.14s ease;
+}
+button:disabled {
+  cursor: not-allowed;
+}
+/* 全系統共用的按下微互動——文件明講每一顆按鈕都是這個。 */
+button:active:not(:disabled) {
+  transform: scale(0.95);
+}
+button:focus-visible,
+input:focus-visible,
+textarea:focus-visible,
+label:focus-within {
+  outline: 2px solid var(--primary-focus);
+  outline-offset: 2px;
+}
+
+/* 主要行動：Action Blue 膠囊。整個介面只有「送出」與空狀態的例句用它。 */
+.btn-primary {
+  background: var(--primary);
+  color: #ffffff;
+  font-size: 17px;
+  line-height: 1.47;
+  letter-spacing: -0.374px;
+  border-radius: var(--r-pill);
+  padding: 11px 22px;
+}
+.btn-primary:hover:not(:disabled) {
+  background: var(--primary-focus);
+}
+.btn-primary:disabled {
+  opacity: 0.42;
+}
+
+/* 工具鈕：導覽列的次要動作。8px 方角、14px 字。 */
+.btn-utility {
+  background: var(--ink);
+  color: #ffffff;
+  font-size: 14px;
+  line-height: 1.29;
+  letter-spacing: -0.224px;
+  border-radius: var(--r-sm);
+  padding: 8px 15px;
+}
+.btn-utility:disabled {
+  opacity: 0.38;
+}
+@media (prefers-color-scheme: dark) {
+  .btn-utility {
+    background: rgba(255, 255, 255, 0.12);
+  }
+}
+
+/* 珍珠膠囊：卡片裡的次要動作。11px 圓角、3px 柔邊當環而不是線。 */
+.btn-pearl {
+  display: inline-block;
+  background: var(--surface-pearl);
+  color: var(--ink-muted-80);
+  border: 3px solid var(--divider-soft);
+  font-size: 14px;
+  line-height: 1.43;
+  letter-spacing: -0.224px;
+  border-radius: var(--r-md);
+  padding: 8px 14px;
+}
+.btn-pearl:hover:not(:disabled) {
+  color: var(--primary);
+}
+.btn-pearl:disabled {
+  color: var(--ink-muted-48);
+  opacity: 0.6;
+}
+/* 珍珠膠囊本來就是「比羊皮紙再白一點」，近黑底上照搬會變成一塊發亮的白。
+   文件沒有給暗色版，就用同樣的邏輯翻過來：比卡片再亮一點點。 */
+@media (prefers-color-scheme: dark) {
+  .btn-pearl {
+    background: rgba(255, 255, 255, 0.08);
+    border-color: rgba(255, 255, 255, 0.04);
+    color: var(--body-muted);
+  }
+  .btn-pearl:hover:not(:disabled) {
+    color: var(--primary-on-dark);
+  }
+}
+
+/* 設定器晶片：可選的一格（雲端／地端、例句）。選中時邊框升級成 2px 焦點藍。 */
+.chip {
+  background: var(--card);
   color: var(--text);
-  padding: 6px 12px;
+  border: 1px solid var(--rule);
+  font-size: 14px;
+  line-height: 1.43;
+  letter-spacing: -0.224px;
+  border-radius: var(--r-pill);
+  padding: 12px 16px;
+  text-align: center;
 }
-button:hover:not(:disabled) { border-color: var(--accent); }
-button:disabled { opacity: 0.5; cursor: not-allowed; }
+.chip:hover:not(:disabled) {
+  border-color: var(--text-muted);
+}
+.chip[aria-pressed="true"] {
+  border: 2px solid var(--primary-focus);
+  padding: 11px 15px; /* 補回多出來的那 1px 邊，尺寸不跳 */
+  font-weight: 600;
+}
+.chip:disabled {
+  opacity: 0.42;
+}
 
-/* ── 版面 ────────────────────────────────────────────────────────── */
+.link {
+  color: var(--link);
+  padding: 0;
+  font-size: inherit;
+}
+.link:hover {
+  text-decoration: underline;
+}
+
+/* ── 版面骨架 ───────────────────────────────────────────────────────── */
 .app {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 320px;
-  gap: 16px;
-  max-width: 1180px;
-  margin: 0 auto;
-  padding: 16px;
-  height: 100vh;
-}
-@media (max-width: 860px) {
-  .app { grid-template-columns: 1fr; height: auto; }
+  height: 100dvh;
+  display: flex;
+  flex-direction: column;
 }
 
-.panel {
-  background: var(--panel);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
+/* 全域導覽列：純黑、44px、12px 字。整個頁面只有這裡出現純黑。 */
+.global-nav {
+  flex: none;
+  height: 44px;
+  background: var(--surface-black);
+  color: var(--body-on-dark);
+  display: flex;
+  align-items: center;
+  gap: var(--s-md);
+  padding: 0 var(--s-lg);
+  font-size: 12px;
+  line-height: 1;
+  letter-spacing: -0.12px;
+}
+.global-nav .wordmark {
+  font-weight: 600;
+  letter-spacing: 0.1px;
+}
+.global-nav .nav-right {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: var(--s-xs);
+  color: var(--body-muted);
+  min-width: 0;
+}
+.global-nav .nav-right span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.dot {
+  width: 7px;
+  height: 7px;
+  border-radius: var(--r-pill);
+  flex: none;
+  display: inline-block;
+  background: var(--ink-muted-48);
+}
+/* 狀態點也只用那一個藍——這套系統沒有第二個顏色可以借。 */
+.dot.ok {
+  background: var(--primary-on-dark);
+}
+
+/* 次導覽：羊皮紙 80% + 毛玻璃，貼在全域列下面。左分類名，右工具。 */
+.sub-nav {
+  flex: none;
+  min-height: 52px;
+  display: flex;
+  align-items: center;
+  gap: var(--s-md);
+  padding: 0 var(--s-lg);
+  background: var(--frost);
+  backdrop-filter: saturate(180%) blur(20px);
+  -webkit-backdrop-filter: saturate(180%) blur(20px);
+  border-bottom: 1px solid var(--rule-soft);
+  z-index: 2;
+}
+.sub-nav .sub-nav-right {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: var(--s-sm);
+}
+.sub-nav .meta {
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+/* 工作區：對話欄 + 側欄。兩邊各自捲動，捲到底的邏輯只認對話欄。 */
+.workspace {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 360px;
+}
+.thread {
   display: flex;
   flex-direction: column;
   min-height: 0;
+  min-width: 0;
 }
-
-.chat { overflow: hidden; }
-
-.chat-header {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 12px 16px;
-  border-bottom: 1px solid var(--border);
-}
-.chat-header h1 { font-size: 16px; margin: 0; flex: 1; }
-
 .viewport {
   flex: 1;
   overflow-y: auto;
-  padding: 16px;
+  overscroll-behavior: contain;
+}
+/* 文字型內容鎖 980px——文件裡文字段落的上限。 */
+.thread-inner {
+  max-width: 980px;
+  margin: 0 auto;
+  padding: var(--s-xxl) var(--s-xl) var(--s-xl);
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  gap: var(--s-lg);
 }
 
-.empty {
-  margin: auto;
+/* ── 空狀態：一塊完整的 hero 磚 ─────────────────────────────────────── */
+.hero {
+  min-height: 100%;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
   text-align: center;
-  color: var(--muted);
-  max-width: 420px;
+  gap: var(--s-lg);
+  padding: var(--s-section) var(--s-xl);
+  max-width: 780px;
+  margin: 0 auto;
 }
-.empty p { margin: 6px 0; }
-.empty code { background: var(--accent-soft); padding: 1px 5px; border-radius: 4px; }
+.hero .t-hero,
+.hero .t-lead {
+  /* 標題與副標寧可整句擺一行；真的要折就折在語意上，不要留一個孤字。 */
+  text-wrap: balance;
+}
+.hero .t-lead {
+  color: var(--text-soft);
+  max-width: 46ch;
+}
+.hero .chip-row {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: var(--s-sm);
+  margin-top: var(--s-xs);
+}
+.hero .hero-note {
+  color: var(--text-muted);
+  max-width: 44ch;
+  margin: var(--s-lg) 0 0;
+}
+.hero code {
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  font-size: 12px;
+  background: var(--card);
+  border: 1px solid var(--rule);
+  border-radius: var(--r-xs);
+  padding: 2px 6px;
+}
 
-/* ── 訊息 ────────────────────────────────────────────────────────── */
-.msg { display: flex; flex-direction: column; gap: 6px; max-width: 88%; }
-.msg.user { align-self: flex-end; align-items: flex-end; }
+/* ── 訊息 ──────────────────────────────────────────────────────────── */
+.msg {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-sm);
+}
+.msg.user {
+  align-items: flex-end;
+}
 
-.bubble {
-  padding: 9px 13px;
-  border-radius: var(--radius);
+/* 使用者：Action Blue 實心、18px 圓角。不用 pill——訊息不是「行動」，
+   pill 在這套系統裡是行動鈕的專屬訊號，借來當泡泡會稀釋掉那個訊號。 */
+.msg.user .bubble {
+  background: var(--primary);
+  color: #ffffff;
+  border-radius: var(--r-lg);
+  padding: var(--s-sm) var(--s-lg);
+  max-width: 72%;
+}
+
+/* 換行只保留在字的那一塊。整顆泡泡吃 pre-wrap 的話，來源表裡的空白
+   也會被當成內容印出來。 */
+.msg .text {
   white-space: pre-wrap;
   word-break: break-word;
-  border: 1px solid var(--border);
 }
-.msg.user .bubble {
-  background: var(--user-bg);
-  color: var(--user-text);
-  border-color: transparent;
+
+/* 模型：白卡，就是文件裡的 store-utility-card（18px + 1px 髮絲線 + 24px 內距）。 */
+.msg.assistant .bubble {
+  background: var(--card);
+  border: 1px solid var(--rule);
+  border-radius: var(--r-lg);
+  padding: var(--s-lg);
 }
-.msg.assistant .bubble { background: var(--bg); }
+.msg.assistant .bubble.has-sources {
+  padding-bottom: var(--s-xs);
+}
 
 .caret::after {
-  content: "▌";
-  color: var(--accent);
+  content: "";
+  display: inline-block;
+  width: 2px;
+  height: 1.05em;
+  margin-left: 2px;
+  vertical-align: -0.18em;
+  background: var(--link);
   animation: blink 1s steps(2) infinite;
 }
-@keyframes blink { 50% { opacity: 0; } }
+@keyframes blink {
+  50% {
+    opacity: 0;
+  }
+}
 
-/* 來源列：真正可靠的完整清單。模型的散文只當摘要看——實測 3B 模型被要求
-   列 20 筆時只列得出 16~17 筆，而且常常不附代號。 */
-.sources { display: flex; flex-direction: column; gap: 3px; }
+/* 來源列：這一列才是完整且精確的清單，模型的散文只當摘要看——實測 3B 模型
+   被要求列 20 筆時只列得出 16~17 筆，而且常常不附代號。所以代號自己一欄，
+   排版當成一張規格表：髮絲線分列、分數靠右、tabular-nums 對齊小數點。 */
+.sources {
+  margin-top: var(--s-lg);
+  border-top: 1px solid var(--rule-soft);
+}
+.sources-head {
+  color: var(--text-muted);
+  padding: var(--s-sm) 0 var(--s-xs);
+}
 .source {
   display: flex;
-  gap: 8px;
-  font-size: 12.5px;
-  color: var(--muted);
   align-items: baseline;
+  gap: var(--s-sm);
+  padding: 9px 0;
+  border-top: 1px solid var(--rule-soft);
+}
+.source .code {
+  flex: none;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--text);
+  min-width: 4.5em;
+}
+.source .label {
+  flex: 1;
+  min-width: 0;
+  color: var(--text-soft);
 }
 .source .score {
+  flex: none;
+  margin-left: auto;
+  color: var(--link);
   font-variant-numeric: tabular-nums;
-  color: var(--accent);
-  background: var(--accent-soft);
-  border-radius: 4px;
-  padding: 0 5px;
+}
+
+/* ── 警示與錯誤：翻成一塊反色磚 ──────────────────────────────────────
+   這套語彙沒有第二個顏色可以借（文件的 Known Gaps 也說錯誤狀態沒被記錄
+   下來），而它給的答案是「要強調就換底色」。所以警示不是黃底紅字，
+   是一塊翻面的磚：亮模式翻成近黑，暗模式翻成羊皮紙。 */
+.inset {
+  background: var(--inset);
+  color: var(--inset-text);
+  border-radius: var(--r-lg);
+  padding: var(--s-md) var(--s-lg);
+  display: flex;
+  align-items: baseline;
+  gap: var(--s-sm);
+}
+.inset .inset-label {
+  flex: none;
+  font-weight: 600;
+}
+.inset .inset-body {
+  flex: 1;
+  min-width: 0;
+  color: var(--inset-muted);
+}
+.inset .link {
+  color: var(--inset-link);
+  margin-left: auto;
   flex: none;
 }
 
-/* 模型說「資料裡沒有」但檢索其實有東西。後端已經重抽過一次，還是矛盾才會
-   走到這裡（約 1%）——不是錯誤，是「別信那句話，看下面」。所以用警示色
-   不用錯誤色。 */
-.warn {
-  font-size: 12.5px;
-  color: var(--warn);
-  background: var(--warn-soft);
-  border: 1px solid currentColor;
-  border-radius: 6px;
-  padding: 4px 8px;
+/* ── 輸入列：文件裡的 floating-sticky-bar + 膠囊搜尋框 ───────────────── */
+.composer-bar {
+  flex: none;
+  background: var(--frost);
+  backdrop-filter: saturate(180%) blur(20px);
+  -webkit-backdrop-filter: saturate(180%) blur(20px);
+  border-top: 1px solid var(--rule-soft);
+  padding: var(--s-sm) var(--s-xl);
 }
-
-.error {
-  background: var(--danger-soft);
-  color: var(--danger);
-  border: 1px solid currentColor;
-  border-radius: 8px;
-  padding: 8px 12px;
-  font-size: 13.5px;
-  display: flex;
-  gap: 10px;
-  align-items: flex-start;
-}
-.error button { margin-left: auto; flex: none; padding: 2px 8px; font-size: 12px; }
-
-/* ── 輸入 ────────────────────────────────────────────────────────── */
 .composer {
+  max-width: 980px;
+  margin: 0 auto;
   display: flex;
-  gap: 8px;
-  padding: 12px 16px;
-  border-top: 1px solid var(--border);
+  align-items: flex-end;
+  gap: var(--s-xs);
+  background: var(--card);
+  border: 1px solid var(--rule);
+  border-radius: var(--r-pill);
+  padding: 5px 5px 5px var(--s-lg);
+  min-height: 54px;
+}
+/* 焦點是這套系統唯一的 2px 訊號。膠囊本身就是框，所以把環畫在裡面，
+   不讓它往外長——外擴的環會撞到毛玻璃列的邊。 */
+.composer:focus-within {
+  border-color: var(--primary-focus);
+  outline: 1px solid var(--primary-focus);
+  outline-offset: -2px;
 }
 .composer textarea {
   flex: 1;
   resize: none;
-  font: inherit;
+  border: none;
+  outline: none;
+  background: none;
   color: inherit;
-  background: var(--bg);
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  padding: 9px 12px;
-  max-height: 140px;
+  font: inherit;
+  letter-spacing: inherit;
+  padding: 12px 0;
+  max-height: 148px;
+  line-height: 1.47;
 }
-.composer textarea:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
-.composer button { background: var(--accent); color: #fff; border-color: transparent; }
-
-/* ── 側邊欄 ──────────────────────────────────────────────────────── */
-.sidebar { display: flex; flex-direction: column; gap: 16px; min-height: 0; overflow-y: auto; }
-.card { padding: 14px 16px; }
-.card h2 {
-  font-size: 12px;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  color: var(--muted);
-  margin: 0 0 10px;
+.composer textarea::placeholder {
+  color: var(--text-muted);
+}
+.composer .btn-primary {
+  flex: none;
 }
 
-.toggle { display: flex; gap: 6px; }
-.toggle button { flex: 1; }
-.toggle button[aria-pressed="true"] {
-  background: var(--accent-soft);
-  border-color: var(--accent);
-  color: var(--accent);
+/* ── 側欄：羊皮紙底上的白卡，中間夾一塊暗磚做明暗節奏 ──────────────── */
+.sidebar {
+  border-left: 1px solid var(--rule-soft);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: var(--s-xl) var(--s-lg) var(--s-xxl);
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-lg);
+}
+/* grid／flex 子項的 auto 最小寬度會被卡片裡最長的一串（檔名、後端網址）
+   撐開，整頁就跟著多出幾 px 的橫向捲動。明寫 0，讓卡片照欄寬縮。 */
+.sidebar > * {
+  min-width: 0;
+}
+.card {
+  background: var(--card);
+  border: 1px solid var(--rule);
+  border-radius: var(--r-lg);
+  padding: var(--s-lg);
+}
+.card > h2 {
+  margin: 0 0 var(--s-sm);
+  font-size: 17px;
   font-weight: 600;
+  line-height: 1.24;
+  letter-spacing: -0.374px;
+}
+.card .note {
+  color: var(--text-muted);
+  margin: var(--s-sm) 0 0;
 }
 
-.stats { display: grid; grid-template-columns: 1fr auto; gap: 4px 12px; font-size: 13px; }
-.stats dt { color: var(--muted); }
-.stats dd { margin: 0; font-variant-numeric: tabular-nums; text-align: right; }
-.note { font-size: 12px; color: var(--muted); margin: 10px 0 0; }
+/* 暗磚卡：跟白卡交替，色彩變化本身就是分隔線。 */
+.card.tile {
+  background: var(--tile-1);
+  color: var(--body-on-dark);
+  border-color: transparent;
+}
+.card.tile .note {
+  color: var(--body-muted);
+}
+@media (prefers-color-scheme: dark) {
+  /* 暗色模式下白卡已經是 tile-1，暗磚卡再挪一階，維持那一點點分隔。 */
+  .card.tile {
+    background: var(--tile-2);
+    border-color: var(--rule-soft);
+  }
+}
 
-.doc-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.toggle {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--s-xs);
+}
+
+.stats {
+  display: flex;
+  gap: var(--s-xl);
+  margin: 0;
+}
+.stats > div {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.stats dt {
+  color: var(--body-muted);
+  font-size: 14px;
+  letter-spacing: -0.224px;
+}
+.stats dd {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: 28px;
+  font-weight: 400;
+  line-height: 1.14;
+  font-variant-numeric: tabular-nums;
+}
+
+.doc-list {
+  list-style: none;
+  margin: var(--s-sm) 0 0;
+  padding: 0;
+}
 .doc {
   display: flex;
-  gap: 8px;
   align-items: center;
-  font-size: 13px;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  padding: 7px 10px;
+  gap: var(--s-sm);
+  padding: var(--s-sm) 0;
+  border-top: 1px solid var(--rule-soft);
 }
-.doc-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.doc-meta { color: var(--muted); font-size: 12px; flex: none; }
-.doc button { padding: 2px 8px; font-size: 12px; flex: none; }
+.doc-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.doc-meta {
+  flex: none;
+  color: var(--text-muted);
+}
+.doc .link {
+  flex: none;
+}
 
 .upload {
-  border: 1px dashed var(--border);
-  border-radius: 8px;
-  padding: 14px;
-  text-align: center;
-  color: var(--muted);
-  font-size: 13px;
-  cursor: pointer;
-  display: block;
+  display: inline-block;
 }
-.upload:hover { border-color: var(--accent); color: var(--accent); }
-.upload input { display: none; }
+.upload input {
+  display: none;
+}
+/* label 裡的假按鈕吃不到 :active / :disabled，所以自己補。 */
+.upload:active .btn-pearl {
+  transform: scale(0.95);
+}
+.upload:has(input:disabled) .btn-pearl {
+  color: var(--ink-muted-48);
+  opacity: 0.6;
+  cursor: not-allowed;
+}
 
-.dot { width: 8px; height: 8px; border-radius: 50%; flex: none; display: inline-block; }
-.dot.ok { background: #16a34a; }
-.dot.off { background: var(--muted); }
+/* 頁尾：細字、靜音色，放真的有用的東西（後端位址）而不是裝飾。 */
+.footer {
+  margin-top: auto;
+  padding-top: var(--s-lg);
+  color: var(--ink-muted-48);
+}
+.footer p {
+  margin: 0 0 var(--s-xxs);
+}
+
+/* ── 斷點（照文件：1068 / 833 / 640 / 419）───────────────────────────── */
+@media (max-width: 1068px) {
+  .t-hero {
+    font-size: 40px;
+    letter-spacing: -0.4px;
+  }
+  .workspace {
+    grid-template-columns: minmax(0, 1fr) 320px;
+  }
+}
+
+@media (max-width: 833px) {
+  /* 側欄折到對話下面，整頁改成自然捲動，輸入列浮在視窗底部。 */
+  .app {
+    height: auto;
+    min-height: 100dvh;
+  }
+  .global-nav {
+    position: sticky;
+    top: 0;
+    z-index: 3;
+  }
+  .sub-nav {
+    position: sticky;
+    top: 44px;
+  }
+  .workspace {
+    display: block;
+  }
+  .thread {
+    display: block;
+  }
+  .viewport {
+    overflow: visible;
+  }
+  .thread-inner {
+    padding: var(--s-xl) var(--s-lg) var(--s-lg);
+  }
+  .hero {
+    min-height: 56vh;
+    padding: var(--s-xxl) 0;
+  }
+  .sidebar {
+    border-left: none;
+    border-top: 1px solid var(--rule-soft);
+    overflow: visible;
+    padding: var(--s-lg) var(--s-lg) 120px;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    align-items: start;
+  }
+  .sidebar .footer,
+  .sidebar .card.docs {
+    grid-column: 1 / -1;
+  }
+  .composer-bar {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 4;
+    padding: var(--s-sm) var(--s-lg);
+    padding-bottom: max(var(--s-sm), env(safe-area-inset-bottom));
+  }
+  .msg.user .bubble {
+    max-width: 86%;
+  }
+}
+
+@media (max-width: 640px) {
+  .t-hero {
+    font-size: 34px;
+  }
+  .t-lead {
+    font-size: 24px;
+  }
+  .sidebar {
+    grid-template-columns: 1fr;
+  }
+  .thread-inner {
+    padding: var(--s-lg) var(--s-md) var(--s-lg);
+  }
+  .global-nav {
+    padding: 0 var(--s-md);
+    gap: var(--s-sm);
+  }
+  .sub-nav {
+    padding: 0 var(--s-md);
+    gap: var(--s-xs);
+  }
+  /* 手機版次導覽只留分類名 + 主要動作，其餘退到側欄。 */
+  .sub-nav .meta {
+    display: none;
+  }
+  .composer {
+    padding-left: var(--s-md);
+  }
+  .stats {
+    gap: var(--s-lg);
+  }
+}
+
+@media (max-width: 419px) {
+  .t-hero {
+    font-size: 28px;
+  }
+  .source .code {
+    min-width: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::after {
+    animation: none !important;
+    transition: none !important;
+  }
+  button:active:not(:disabled) {
+    transform: none;
+  }
+}

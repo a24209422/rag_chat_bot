@@ -5,6 +5,9 @@
 
 const BASE = (import.meta.env.VITE_API_URL ?? "http://localhost:8000").replace(/\/$/, "");
 
+/** 頁尾要顯示現在打的是哪一台——設錯 VITE_API_URL 時這一行最快看出來。 */
+export const API_BASE = BASE;
+
 export type Side = "cloud" | "onperm";
 
 export interface Message {
