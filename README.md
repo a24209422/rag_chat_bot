@@ -488,6 +488,21 @@ curl -X POST http://localhost:8000/chat -H "Content-Type: application/json"     
 預設放行 `localhost:5173`）。Streamlit 與 CLI 是從伺服器端呼叫，不受 CORS 管——
 這也是為什麼這個中介層拖到現在才加。
 
+### 兩個 UI 的換行不是同一回事
+
+又是一個「不報錯、只默默出錯」的坑：
+
+- **React** 的 `.bubble` 是 `white-space: pre-wrap`，模型吐什麼換行就照著斷，沒事。
+- **Streamlit** 的 `st.write` 走 markdown，而 **markdown 會把單一換行吃掉**，相鄰兩行
+  併成一段。模型列職缺時正好是一行一個欄位（`代號：X` 換行 `職缺名稱：Y`），實測一則
+  回答裡有 36 個換行，畫面上一個都看不到——二十筆職缺糊成一大坨。
+
+所以 `shared/app.py` 的 `_hard_breaks()` 把換行補成 markdown 的硬換行（行尾兩個空白）。
+刻意用**逐字元替換**而不是正規表示式：串流是一段一段來的，換行可能剛好被切在兩個
+token 中間，只有字元替換才保證「逐段套用 == 整段套用」（`tests/test_app.py` 把這點釘住了）。
+
+只動顯示，不動 `history`——UI 的排版需求不該污染送回後端的內容。
+
 ## 動態知識庫
 
 執行期可以上傳職缺 PDF，當場解析、切塊、進索引；也可以刪掉。

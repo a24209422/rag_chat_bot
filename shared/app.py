@@ -10,6 +10,26 @@ from shared.api_client import ApiClient, ApiError
 from shared.llm import Usage
 
 
+def _hard_breaks(text):
+    """Markdown 會把單一換行吃掉，相鄰兩行併成一段。
+
+    模型列職缺時是一行一個欄位（「代號：X」換行「職缺名稱：Y」），實測一則
+    回答裡有 36 個換行，畫面上一個都看不到——二十筆職缺糊成一大坨。補成
+    markdown 的硬換行（行尾兩個空白）就會照原樣斷行。
+
+    逐字元替換，所以串流時一段一段套用也不會出錯（不像正規表示式要跨段落
+    往前後看）。連續換行會變成「硬換行＋只有空白的一行」，markdown 仍然當
+    段落分隔處理，跟原本的行為一樣。
+
+    ⚠ 只動顯示。history 存的是模型原本吐的字——UI 的排版需求不該污染送回
+      後端的內容。StreamedAnswer.reply 在 tokens() 裡就累積好了，這個函式
+      包在它外面，動不到。
+
+    React 那邊不需要這個：.bubble 用 white-space: pre-wrap，換行本來就會保留。
+    """
+    return text.replace("\n", "  \n")
+
+
 def _align(prev, value, n):
     """接上新的一輪，再對齊 history 的長度。
 
@@ -47,7 +67,7 @@ def run(side, title):
     for m, src, bad in zip(st.session_state.history, st.session_state.sources,
                            st.session_state.flags, strict=True):
         with st.chat_message(m["role"]):         # 中性格式的 role 直接就能畫
-            st.write(m["content"])
+            st.write(_hard_breaks(m["content"]))
             _warn(bad, src)
             for s in (src or []):                # user 那格是 None，不能直接迭代
                 st.caption(f"`{s['score']:.3f}` {s['label']}")
@@ -68,7 +88,7 @@ def run(side, title):
         if stream is not None:
             with st.chat_message("assistant"):
                 try:
-                    st.write_stream(stream.tokens())
+                    st.write_stream(_hard_breaks(t) for t in stream.tokens())
                 except ApiError as e:
                     # 生成中途壞掉。畫面上已經有半截答案了，所以錯誤要接在
                     # 它後面顯示，不能取代它。
