@@ -6,6 +6,7 @@
 #   把 provider 的例外翻成狀態碼。真正的邏輯還是在 shared/chat_bot.py，
 #   所以 CLI、Streamlit、這個 API 三條路跑的是同一份程式。
 import json
+import logging
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, HTTPException, UploadFile
@@ -59,9 +60,49 @@ app = FastAPI(
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings().cors_list(),
+    # 白名單之外再放行本機的任意埠（vite 跳 5174、preview 是 4173……）。
+    # 理由與範圍見 shared/settings.py 的 cors_origin_regex。
+    allow_origin_regex=settings().cors_origin_regex or None,
     allow_methods=["GET", "POST", "DELETE"],
     allow_headers=["*"],
 )
+
+
+class _ExplainRejectedPreflight:
+    """被擋掉的預檢，在日誌裡說出是哪個來源被擋。
+
+    Starlette 擋下來源不合的預檢時回 400，理由寫在回應的 body 裡——但預檢是
+    瀏覽器自己發的，那段文字沒有人看得到：devtools 只說 CORS 失敗，後端日誌
+    只有一行「OPTIONS /chat/stream 400」，看不出是來源、方法、還是標頭的問題。
+    沒有這行字，唯一的辦法是自己用 curl 重打一次預檢。
+
+    只包 OPTIONS：SSE 那條路不經過這裡，串流不會被中介層插手。
+    """
+
+    def __init__(self, app):
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] != "http" or scope["method"] != "OPTIONS":
+            return await self.app(scope, receive, send)
+
+        async def explaining(message):
+            if (message["type"] == "http.response.start"
+                    and message["status"] == 400):
+                headers = dict(scope.get("headers") or [])
+                origin = headers.get(b"origin", b"?").decode("latin-1")
+                logging.getLogger("uvicorn.error").warning(
+                    "CORS 擋下預檢：來源 %s 不在允許名單內"
+                    "（CORS_ORIGINS=%s，CORS_ORIGIN_REGEX=%s）",
+                    origin, settings().cors_origins,
+                    settings().cors_origin_regex or "（關閉）")
+            await send(message)
+
+        await self.app(scope, receive, explaining)
+
+
+# 加在 CORS 之後＝包在它外面，才看得到它回的 400。
+app.add_middleware(_ExplainRejectedPreflight)
 
 
 @app.get("/health", response_model=Health)

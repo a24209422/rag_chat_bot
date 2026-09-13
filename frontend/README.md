@@ -16,8 +16,12 @@ npm run dev          # http://localhost:5173
 uvicorn api.main:app --reload
 ```
 
-要改後端位址就複製 `.env.example` 成 `.env` 改 `VITE_API_URL`，
-並把前端的來源加進後端的 `CORS_ORIGINS`。
+要改後端位址就複製 `.env.example` 成 `.env` 改 `VITE_API_URL`。
+
+CORS 不用管——後端放行 `localhost`／`127.0.0.1` 的**任意埠**，所以 5173 被佔走
+跳 5174、或 `npm run preview`（4173）都打得進去。只有從別台機器連進來
+（`npm run dev -- --host`，用手機或另一台電腦開）才要把那個來源加進後端的
+`CORS_ORIGINS`；沒加的症狀是預檢被擋，後端日誌會寫出是哪個來源。
 
 ## 指令
 

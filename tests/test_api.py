@@ -499,3 +499,28 @@ def test_cors允許前端的來源(client, parsed):
     })
     assert r.status_code == 200
     assert r.headers["access-control-allow-origin"] == "http://localhost:5173"
+
+
+def test_cors放行本機的其他埠(client, parsed):
+    """5173 被佔走時 vite 會自己跳 5174，`vite preview` 是 4173。埠一換就整個
+    前端打不進來太脆，所以本機任意埠都放行（cors_origin_regex）。"""
+    for origin in ["http://localhost:5174", "http://127.0.0.1:4173"]:
+        r = client.options("/chat/stream", headers={
+            "Origin": origin,
+            "Access-Control-Request-Method": "POST",
+            "Access-Control-Request-Headers": "content-type",
+        })
+        assert r.status_code == 200, origin
+        assert r.headers["access-control-allow-origin"] == origin
+
+
+def test_cors擋下本機以外的來源並在日誌說明(client, parsed, caplog):
+    """放行本機不等於放行全部。而且被擋時要在後端日誌講出是哪個來源——
+    Starlette 的說明寫在預檢的 body 裡，那是瀏覽器自己發的請求，沒人看得到。"""
+    r = client.options("/chat/stream", headers={
+        "Origin": "https://evil.example.com",
+        "Access-Control-Request-Method": "POST",
+    })
+    assert r.status_code == 400
+    assert "access-control-allow-origin" not in r.headers
+    assert "evil.example.com" in caplog.text

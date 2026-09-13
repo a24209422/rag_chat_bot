@@ -71,6 +71,14 @@ class Settings(BaseSettings):
     # 逗號分隔。* 會連帶關掉帶 cookie 的請求，所以老實列出來。
     cors_origins: str = "http://localhost:5173,http://127.0.0.1:5173"
 
+    # 上面那兩個是「說好的」位址，但開發時的來源常常不是它：5173 被佔走的話
+    # vite 會自己跳 5174，`vite preview` 是 4173，開 `--host` 從別的裝置連進來
+    # 又是區網 IP。每換一個埠就要改 .env 再重開後端，而且症狀是預檢 400、
+    # 後端日誌只有一行 OPTIONS 400——所以本機的任意埠一律放行。
+    # 只認 localhost/127.0.0.1：別台機器的來源仍然要老實列進 CORS_ORIGINS。
+    # 設成空字串就關掉這條，只剩上面那份白名單。
+    cors_origin_regex: str = r"http://(localhost|127\.0\.0\.1)(:\d+)?"
+
     # ── 上傳的文件 ───────────────────────────────────────────────────
     max_upload_bytes: int = 10 * 1024 * 1024
     allowed_upload_suffixes: str = ".pdf"      # 逗號分隔，理由見 shared/ingest.py
