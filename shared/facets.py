@@ -63,6 +63,50 @@ DEGREE = {
 }
 REMOTE = ["遠端", "remote", "在家"]
 
+# ── 待遇 ─────────────────────────────────────────────────────────────
+# 薪資是唯一一個要「比大小」的欄位，所以不能像其他 facet 那樣用詞彙表比對。
+# 實際的寫法一份一個樣（30 個職缺就有這些）：
+#     面議 / 待遇面議 / 依學經歷及專業能力面議
+#     月薪30,000元 / 月薪$36,000~41,000 (面議) / 月薪 NT$36,000–42,000，依…核定
+#     月薪 36,000 ~ 43,000 元（正職） / 實習時薪 195 ~ 220 元
+#     年薪600,000以上
+#     時薪 NT$ 400 ~ 800 元或 專案論件計酬（依經驗面議）
+# 所以要吃：NT$／$／逗號／元、~ ～ - – — 至 到 六種範圍符號、「以上」沒有天花板，
+# 以及「月薪在前、實習時薪在後」這種一欄兩個數字。
+PAY = re.compile(r"(月薪|年薪|時薪)\s*(?:NT)?\s*\$?\s*([\d,]+)"
+                 r"(?:\s*[~～\-–—至到]\s*(?:NT)?\s*\$?\s*([\d,]+))?"
+                 r"\s*元?\s*(以上|起)?")
+
+
+def _int(s):
+    return int(s.replace(",", ""))
+
+
+def pay_of(text):
+    """把「待遇」欄換算成可以比大小的月薪區間 [下限, 上限]。
+
+    上限 None＝「以上」，沒有天花板。整個回 [] 代表**判斷不了**——面議、
+    只給時薪、論件計酬都是這一類。
+
+    ⚠ 「判斷不了」不等於「不符合」，而這是這個欄位最重要的一件事：過濾時
+      判斷不了的會被整個排除，所以呼叫端一定要把被排除的數量講出來（見
+      pay_caveat），否則清單看起來完整、其實漏掉一半——那比答不出來更糟。
+
+    時薪不換算成月薪：不知道一個月排幾小時，乘一個猜的數字等於偽造資料。
+    一欄同時有月薪和實習時薪時，取先出現的月薪（實測都是月薪寫在前面）。
+    """
+    for unit, lo, hi, unbounded in PAY.findall(text or ""):
+        if unit == "時薪":
+            continue
+        low = _int(lo)
+        high = None if unbounded else (_int(hi) if hi else low)
+        if unit == "年薪":
+            low //= 12
+            high = high // 12 if high is not None else None
+        return [low, high]
+    return []
+
+
 # 有公司沒填地點，留著範本文字：「【待填：公司地點，例：台北市內湖區】」。
 # 不砍掉的話會被裡面的「例：台北市內湖區」誤判成台北。
 PLACEHOLDER = re.compile(r"【[^】]*待填[^】]*】")
@@ -105,6 +149,8 @@ def derive(meta):
         "remote": any(w in loc.lower() for w in REMOTE),
         "kind": _hits(kind_src, KIND),
         "degree": _hits(meta.get("學歷要求", ""), DEGREE),
+        # 空的 list 代表「判斷不了」，跟上面那些「資料沒寫」是同一種誠實。
+        "pay": pay_of(meta.get("待遇", "")),
     }
 
 
@@ -115,6 +161,75 @@ def known_districts(docs):
     所以查詢側沒辦法用同一個正規表示式，得靠詞彙表比對。
     """
     return sorted({d for doc in docs for d in doc.facets.get("district", [])})
+
+
+# 問句裡的門檻方向。⚠ 「不超過」裡面含有「超過」、「不低於」裡面含有「低於」,
+# 所以比對要照**出現位置**取最早的那個（否定詞在前，位置比較早就會贏），
+# 不能照表的順序找到就算——那會把「不超過五萬」判成「超過五萬」。
+PAY_ABOVE = ("以上", "超過", "至少", "大於", "高於", "多於", "起跳", "不低於", "破")
+PAY_BELOW = ("以下", "以內", "低於", "少於", "小於", "不到", "不超過", "不滿")
+PAY_KEYS = ("pay_min", "pay_max")
+
+CN = {"一": 1, "二": 2, "兩": 2, "三": 3, "四": 4, "五": 5,
+      "六": 6, "七": 7, "八": 8, "九": 9, "十": 10}
+# 「五萬」「5萬」「三萬五」「5.5萬」都要認；「萬」後面那一個字是千位。
+WAN = re.compile(r"(\d[\d,]*(?:\.\d+)?|[一二兩三四五六七八九十]+)\s*萬\s*"
+                 r"([\d一二兩三四五六七八九])?")
+# 沒有「萬」就要求至少四位數：避免把「前 5 名」「k=5」這種數字當成薪水。
+PLAIN = re.compile(r"(\d[\d,]{3,})\s*元?")
+
+
+def _cn(s):
+    """中文或阿拉伯數字 → 數值。認不得就 None（於是不會組出過濾條件）。"""
+    if not s:
+        return None
+    if s[0].isdigit():
+        return float(s.replace(",", ""))
+    if "十" in s:
+        tens, _, ones = s.partition("十")
+        return (CN.get(tens, 1) if tens else 1) * 10 + (CN.get(ones, 0) if ones else 0)
+    return CN.get(s)
+
+
+def _amount(q):
+    m = WAN.search(q)
+    if m:
+        n = _cn(m.group(1))
+        if n is None:
+            return None
+        return int(n * 10000 + (_cn(m.group(2)) or 0) * 1000)   # 「三萬五」的五是千位
+    m = PLAIN.search(q)
+    return _int(m.group(1)) if m else None
+
+
+def _direction(q):
+    """問的是「以上」還是「以下」。取出現位置最早、同位置取最長的那個。"""
+    best = None
+    for key, words in (("pay_min", PAY_ABOVE), ("pay_max", PAY_BELOW)):
+        for w in words:
+            i = q.find(w)
+            if i >= 0 and (best is None or (i, -len(w)) < best[:2]):
+                best = (i, -len(w), key)
+    return best[2] if best else None
+
+
+def _pay_filter(q):
+    """從問句抓出薪資門檻。抓不到就回空的——退回純向量檢索，跟以前一樣。
+
+    ⚠ 問「時薪超過 300」時**刻意不組條件**：職缺那邊的時薪換不成月薪
+      （見 pay_of），硬比就是拿兩種單位相減。寧可退回舊行為，也不要給出
+      一個有依據的樣子卻是錯的答案。
+    """
+    if not any(w in q for w in ("薪", "待遇", "月收", "年收")):
+        return {}
+    if "時薪" in q:
+        return {}
+    key, amount = _direction(q), _amount(q)
+    if key is None or amount is None:
+        return {}       # 「薪水多少」「薪水五萬」沒有方向，不猜
+    if "年薪" in q or "年收" in q:
+        amount //= 12   # 門檻也要換成月薪才比得起來
+    return {key: amount}
 
 
 def parse_query(q, districts=()):
@@ -142,6 +257,7 @@ def parse_query(q, districts=()):
         f["degree"] = degree
     if any(w in q.lower() for w in REMOTE):
         f["remote"] = True
+    f.update(_pay_filter(q))        # 薪資是唯一要比大小的條件，見 _pay_filter
     return f
 
 
@@ -198,14 +314,51 @@ def describe(filters):
     ⚠ 這不是「叫模型聽話」的咒語，是補一塊它沒有的知識。兩者的差別在於
       前者靠運氣，後者可以解釋為什麼會有效。
     """
-    return "、".join(
-        "%s＝%s" % (LABEL[k], "／".join(v) if isinstance(v, list) else "是")
-        for k, v in filters.items() if k in LABEL)
+    parts = []
+    for k, v in filters.items():
+        if k in LABEL:
+            parts.append("%s＝%s"
+                         % (LABEL[k], "／".join(v) if isinstance(v, list) else "是"))
+        elif k in PAY_KEYS:
+            parts.append("月薪 %s 元%s"
+                         % (format(v, ","), "以上" if k == "pay_min" else "以下"))
+    return "、".join(parts)
+
+
+def pay_caveat(unknown):
+    """待遇判斷不了的那些職缺，數量一定要講出來。
+
+    它們被過濾整個排除了（見 _pay_ok），而模型只看得到留下來的那幾筆。不講
+    的話它會用一份少了一半的清單講出「只有這些」——上線就是這樣錯的：問
+    「哪些公司薪水超過五萬」，30 個職缺裡 18 個寫面議或只給時薪，模型拿著
+    剩下的講得斬釘截鐵。看起來完整卻不完整，比明說「有幾筆判斷不了」危險。
+    """
+    return ("另有 %d 個職缺的待遇寫「面議」或只給時薪，判斷不了，不在這份清單裡"
+            "——回答時要把這件事一併告訴使用者。" % unknown) if unknown else ""
+
+
+def _pay_ok(pay, key, want):
+    """薪資門檻。判斷不了的（面議、只給時薪）一律不符合——寧可漏，不要編。
+
+    比的是區間跟門檻有沒有重疊，不是比某一個端點：
+      「月薪 45,000~60,000」問「五萬以上」→ 符合（上限碰得到）
+      「年薪 600,000 以上」→ 換算成月薪 50,000 起、沒有天花板 → 符合
+    """
+    if not pay:
+        return False
+    low, high = pay
+    if key == "pay_min":
+        return high is None or high >= want
+    return low <= want
 
 
 def match(facets, filters):
     """一筆資料符不符合過濾條件。多值欄位只要有交集就算符合。"""
     for key, want in filters.items():
+        if key in PAY_KEYS:
+            if not _pay_ok(facets.get("pay"), key, want):
+                return False
+            continue
         got = facets.get(key)
         if key == "remote":
             if not got:

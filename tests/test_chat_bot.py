@@ -29,10 +29,11 @@ class FakeLLM(BaseLLM):
 
 
 class StubRetriever:
-    def __init__(self, hits, filters=None, terms=None):
+    def __init__(self, hits, filters=None, terms=None, unknown=0):
         self.hits = hits
         self.filters = filters or {}
         self.terms = terms or []          # 問句裡出現的原字，重問補句用
+        self.unknown = unknown            # 待遇判斷不了的職缺數（見 pay_caveat）
 
     def filters_for(self, question):
         return self.filters
@@ -43,6 +44,9 @@ class StubRetriever:
     def retrieve(self, question, k=5, filters=None):
         return self.hits[:k]
 
+    def pay_unknown(self):
+        return self.unknown
+
 
 def hit(code):
     d = Doc(id=f"{code}#1", text="塊", label=f"{code} · 公司 · 職缺",
@@ -50,9 +54,9 @@ def hit(code):
     return (d, 0.9)
 
 
-def make(hits=(), filters=None, terms=None, **kw):
+def make(hits=(), filters=None, terms=None, unknown=0, **kw):
     llm = kw.pop("llm", None) or FakeLLM()
-    return ChatBot(retriever=StubRetriever(list(hits), filters, terms),
+    return ChatBot(retriever=StubRetriever(list(hits), filters, terms, unknown),
                    llm=llm, **kw), llm
 
 
@@ -223,9 +227,9 @@ class FakeStreamLLM(BaseLLM):
         return self.calls[-1]
 
 
-def make_stream(hits=(), filters=None, terms=None, **kw):
+def make_stream(hits=(), filters=None, terms=None, unknown=0, **kw):
     llm = kw.pop("llm", None) or FakeStreamLLM()
-    return ChatBot(retriever=StubRetriever(list(hits), filters, terms),
+    return ChatBot(retriever=StubRetriever(list(hits), filters, terms, unknown),
                    llm=llm, **kw), llm
 
 
@@ -592,3 +596,25 @@ def test_兩條路的重問內容也要一致():
     list(bot_s.ask_stream("南部呢？", []))
 
     assert llm_a.seen[1] == llm_s.seen[1]
+
+
+def test_薪資門檻要把被濾掉的數量一起講出來():
+    """過濾只留下「確定符合」的，面議與只給時薪的整批消失了——模型看不到
+    這件事。不講的話它會拿著一份少了一半的清單說「只有這些」，而那正是
+    上線時出的錯：30 個職缺有 18 個判斷不了。"""
+    bot, llm = make([hit("MAT-02")], filters={"pay_min": 50000}, unknown=18)
+
+    bot.ask("哪些公司的薪水超過五萬", [])
+
+    sent = llm.last["messages"][-1]["content"]
+    assert "月薪 50,000 元以上" in sent
+    assert "18" in sent and "判斷不了" in sent
+
+
+def test_沒有薪資條件就不加那句():
+    """地點篩選不會漏掉任何職缺（每一筆都有地點欄），多講一句反而製造疑慮。"""
+    bot, llm = make([hit("A-01")], filters={"city": ["台北"]}, unknown=18)
+
+    bot.ask("台北有哪些職缺", [])
+
+    assert "判斷不了" not in llm.last["messages"][-1]["content"]

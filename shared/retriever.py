@@ -83,6 +83,15 @@ class BaseRetriever:
         """
         return terms_in(question, self.districts)
 
+    def pay_unknown(self):
+        """待遇判斷不了的職缺數（面議、只給時薪、論件計酬）。
+
+        這些會被薪資門檻整個濾掉，而模型只看得到留下來的那幾筆——所以要把
+        數量告訴它，理由見 shared/facets.py 的 pay_caveat。數的是「不同職缺」
+        不是塊數，跟 retrieve() 回的單位一致。
+        """
+        return len({d.group for d in self.docs if not d.facets.get("pay")})
+
     def doc_vecs(self):
         """整個索引的向量。給 tools/probe_threshold.py 用。"""
         return self.store.vectors

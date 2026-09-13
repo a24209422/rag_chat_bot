@@ -13,6 +13,7 @@ from shared.facets import (
     known_districts,
     match,
     parse_query,
+    pay_caveat,
     terms_in,
 )
 from shared.knowledge import Doc
@@ -212,3 +213,94 @@ def test_as_question_組成獨立可讀的問句():
     assert as_question(["南部"]) == "南部有哪些職缺？"
     assert as_question(["台北", "實習"]) == "台北、實習有哪些職缺？"
     assert as_question([]) is None
+
+
+# ── 待遇：唯一一個要「比大小」的欄位 ──────────────────────────────────
+@pytest.mark.parametrize("written, want", [
+    ("月薪30,000元", [30000, 30000]),
+    ("月薪$36,000~41,000 (面議)", [36000, 41000]),
+    ("月薪 45,000 ~ 60,000 （面議）", [45000, 60000]),
+    ("月薪 NT$36,000–42,000，依學經歷與能力核定", [36000, 42000]),   # 破折號不是減號
+    ("年薪600,000以上", [50000, None]),            # 換算成月薪，而且沒有天花板
+    ("月薪 36,000 ~ 43,000 元（正職） / 實習時薪 195 ~ 220 元", [36000, 43000]),
+])
+def test_待遇的每一種寫法都要認得(written, want):
+    """這六種是那批 PDF 裡真的出現過的寫法，一份一個樣。"""
+    assert derive({"待遇": written})["pay"] == want
+
+
+@pytest.mark.parametrize("written", [
+    "面議",
+    "待遇面議",
+    "依學經歷及專業能力面議",
+    "時薪 NT$ 190 ~ 220 元（面議，享勞健保）",
+    "時薪 NT$ 500 ~ 1,000 元 或 專案論件計酬（依經驗面議）",
+    "",
+])
+def test_判斷不了的待遇要誠實留空(written):
+    """30 個職缺裡有 18 個是這一類。時薪不換算成月薪——不知道一個月排幾小時，
+    乘一個猜的數字等於偽造資料。空的代表「不知道」，不是「不符合」。"""
+    assert derive({"待遇": written})["pay"] == []
+
+
+@pytest.mark.parametrize("q, want", [
+    ("哪些公司的薪水超過五萬", {"pay_min": 50000}),
+    ("月薪四萬以上的職缺", {"pay_min": 40000}),
+    ("薪水50000以上", {"pay_min": 50000}),
+    ("待遇三萬五以上", {"pay_min": 35000}),        # 「萬」後面那個字是千位
+    ("薪水不超過三萬五的", {"pay_max": 35000}),
+    ("年薪超過六十萬", {"pay_min": 50000}),        # 門檻本身也要換成月薪
+])
+def test_問句裡的薪資門檻(q, want):
+    assert parse_query(q) == want
+
+
+def test_不超過不能被當成超過():
+    """「不超過」裡面含有「超過」、「不低於」裡面含有「低於」。照詞表的順序
+    找到就算的話方向會反過來——問「不超過三萬」會得到「三萬以上」的答案，
+    剛好相反，而且看起來很合理。"""
+    assert parse_query("薪水不超過三萬") == {"pay_max": 30000}
+    assert parse_query("薪水不低於三萬") == {"pay_min": 30000}
+
+
+def test_時薪不組條件():
+    """職缺那邊的時薪換不成月薪（見 pay_of），硬比就是拿兩種單位相減。
+    退回純向量檢索，跟沒有這個功能之前一樣——寧可沒答案，不要有依據的錯答案。"""
+    assert parse_query("時薪超過300的職缺") == {}
+
+
+def test_沒有方向或沒有數字就不猜():
+    assert parse_query("薪水多少") == {}
+    assert parse_query("薪水五萬") == {}     # 「五萬以上」還是「就是五萬」？不猜
+
+
+def test_薪資條件跟其他條件併用():
+    assert parse_query("台北月薪五萬以上的全職") == {
+        "city": ["台北"], "kind": ["全職"], "pay_min": 50000}
+
+
+def test_match_薪資比的是區間有沒有碰到門檻():
+    assert match({"pay": [45000, 60000]}, {"pay_min": 50000})    # 上限碰得到
+    assert match({"pay": [50000, None]}, {"pay_min": 50000})     # 「以上」沒有天花板
+    assert not match({"pay": [36000, 41000]}, {"pay_min": 50000})
+    assert match({"pay": [30000, 30000]}, {"pay_max": 35000})
+    assert not match({"pay": [45000, 60000]}, {"pay_max": 35000})
+
+
+def test_match_判斷不了的一律不符合():
+    """寧可漏，不要編。代價是清單不完整，所以呼叫端一定要講出漏了幾筆。"""
+    assert not match({"pay": []}, {"pay_min": 50000})
+    assert not match({}, {"pay_min": 50000})      # 還沒重算過的舊資料也不能炸
+
+
+def test_describe_薪資也要講成人話():
+    assert describe({"pay_min": 50000}) == "月薪 50,000 元以上"
+    assert describe({"pay_max": 35000}) == "月薪 35,000 元以下"
+
+
+def test_pay_caveat_把被濾掉的數量講出來():
+    """上線就是這樣錯的：問「哪些公司薪水超過五萬」，30 個職缺有 18 個寫面議
+    或只給時薪，模型拿著剩下的 12 個講「只有這些」。看起來完整卻不完整，
+    比明說「有幾筆判斷不了」危險得多。"""
+    assert "18" in pay_caveat(18)
+    assert pay_caveat(0) == ""

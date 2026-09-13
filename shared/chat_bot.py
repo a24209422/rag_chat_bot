@@ -4,7 +4,7 @@
 #       retriever  CloudRetriever / OnpremRetriever（差在 embed 與 min_score）
 #       llm        GeminiLLM / LlamaCppLLM（差在線路格式與 usage 怎麼讀）
 #   加第三家就是傳一個新的 llm 進來，這個檔案不用動。
-from shared.facets import as_question, describe
+from shared.facets import PAY_KEYS, as_question, describe, pay_caveat
 from shared.knowledge import SYSTEM
 from shared.llm import Usage
 from shared.settings import settings
@@ -245,8 +245,12 @@ class ChatBot:
         # 判斷過了——不說的話它會自己再判一次而且判錯（見 facets.describe）。
         note = ""
         if filters:
-            note = ("（【資料】已依「%s」篩選完畢，列出的就是全部符合的職缺。）\n"
-                    % describe(filters))
+            # 薪資門檻會把「面議」「只給時薪」那些整個濾掉，被濾掉幾筆要一起
+            # 講——不然「列出的就是全部」這句話是假的。見 facets.pay_caveat。
+            caveat = (pay_caveat(self.retriever.pay_unknown())
+                      if any(k in filters for k in PAY_KEYS) else "")
+            note = ("（【資料】已依「%s」篩選完畢，列出的就是全部符合的職缺。%s）\n"
+                    % (describe(filters), caveat))
         context = self._context(hits)
 
         history.append({"role": "user", "content": user})     # 歷史存乾淨的

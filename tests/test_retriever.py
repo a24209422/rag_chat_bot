@@ -269,3 +269,29 @@ def test_沒有registry就不同步(tmp_path):
     """測試那條路：只給 docs，不接 registry。"""
     r = FakeRetriever([doc("A")], {"A": 0.9})
     assert r.refresh() == (0, 0)
+
+
+# ── 薪資門檻 ──────────────────────────────────────────────────────────
+def test_薪資門檻會把判斷不了的整個排除():
+    """面議的職缺不是「不符合」，是「不知道」——但過濾只能留下確定符合的，
+    所以它們會消失。消失幾個要由 pay_unknown() 報出來給模型看。"""
+    docs = [doc("A", pay=[50000, None]),      # 年薪 60 萬以上
+            doc("B", pay=[45000, 60000]),     # 上限碰得到五萬
+            doc("C", pay=[36000, 41000]),     # 確定不到五萬
+            doc("D", pay=[])]                 # 面議
+    r = FakeRetriever(docs, {"A": 0.9, "B": 0.8, "C": 0.7, "D": 0.6})
+
+    hits = r.retrieve("薪水超過五萬", filters={"pay_min": 50000})
+
+    assert [d.group for d, _ in hits] == ["A", "B"]
+
+
+def test_pay_unknown_數的是不同職缺不是塊數():
+    """一個職缺切成好幾塊，數塊數的話面議的數量會被灌水——而那個數字會
+    直接寫進 prompt 給使用者看。"""
+    docs = [doc("A#1", group="A", pay=[]), doc("A#2", group="A", pay=[]),
+            doc("B#1", group="B", pay=[30000, 30000]),
+            doc("C#1", group="C", pay=[])]
+    r = FakeRetriever(docs, {"A#1": 0.9, "A#2": 0.9, "B#1": 0.9, "C#1": 0.9})
+
+    assert r.pay_unknown() == 2               # A 與 C，不是 3 塊
