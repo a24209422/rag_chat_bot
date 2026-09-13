@@ -29,10 +29,14 @@ class FakeLLM(BaseLLM):
 
 
 class StubRetriever:
-    def __init__(self, hits):
+    def __init__(self, hits, filters=None):
         self.hits = hits
+        self.filters = filters or {}
 
-    def retrieve(self, question, k=5):
+    def filters_for(self, question):
+        return self.filters
+
+    def retrieve(self, question, k=5, filters=None):
         return self.hits[:k]
 
 
@@ -42,9 +46,9 @@ def hit(code):
     return (d, 0.9)
 
 
-def make(hits=(), **kw):
+def make(hits=(), filters=None, **kw):
     llm = kw.pop("llm", None) or FakeLLM()
-    return ChatBot(retriever=StubRetriever(list(hits)), llm=llm, **kw), llm
+    return ChatBot(retriever=StubRetriever(list(hits), filters), llm=llm, **kw), llm
 
 
 # ── 短路 ──────────────────────────────────────────────────────────────
@@ -214,9 +218,9 @@ class FakeStreamLLM(BaseLLM):
         return self.calls[-1]
 
 
-def make_stream(hits=(), **kw):
+def make_stream(hits=(), filters=None, **kw):
     llm = kw.pop("llm", None) or FakeStreamLLM()
-    return ChatBot(retriever=StubRetriever(list(hits)), llm=llm, **kw), llm
+    return ChatBot(retriever=StubRetriever(list(hits), filters), llm=llm, **kw), llm
 
 
 def test_ask_stream_的hits馬上就有():
@@ -298,3 +302,39 @@ def test_兩條路組出來的prompt一模一樣():
 
     assert llm_a.last["messages"] == llm_b.last["messages"]
     assert llm_a.last["system"] == llm_b.last["system"]
+
+
+# ── 有過濾條件時要講給模型聽 ──────────────────────────────────────────
+def test_有過濾條件就在prompt裡說明資料已經篩過():
+    """模型判斷不出「台南算不算南部」——實測拿著台南的職缺被問「南部有哪些」，
+    6 次有 6 次回「資料裡沒有」。把展開結果寫進 prompt 之後 6 次全對。
+    這不是叫模型聽話的咒語，是補一塊它沒有的知識。"""
+    bot, llm = make([hit("INT-01")],
+                    filters={"city": ["嘉義", "台南", "高雄", "屏東"]})
+
+    bot.ask("南部有哪些職缺", [])
+
+    sent = llm.last["messages"][-1]["content"]
+    assert "地點＝嘉義／台南／高雄／屏東" in sent
+    assert "全部符合的職缺" in sent
+
+
+def test_沒有過濾條件就不加那句():
+    """純向量檢索撈回來的是「最像的前 k 個」，不是「全部符合的」——
+    這時候說「列出的就是全部」會是謊話。"""
+    bot, llm = make([hit("A-01")])
+
+    bot.ask("有哪些無人機相關的職缺", [])
+
+    assert "篩選完畢" not in llm.last["messages"][-1]["content"]
+
+
+def test_兩條路的篩選說明也要一致():
+    f = {"city": ["台北"], "kind": ["實習"]}
+    bot_a, llm_a = make([hit("A-01")], filters=f)
+    bot_s, llm_s = make_stream([hit("A-01")], filters=f)
+
+    bot_a.ask("台北的實習", [])
+    list(bot_s.ask_stream("台北的實習", []))
+
+    assert llm_a.last["messages"] == llm_s.last["messages"]

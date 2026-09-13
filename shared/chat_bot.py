@@ -4,6 +4,7 @@
 #       retriever  CloudRetriever / OnpremRetriever（差在 embed 與 min_score）
 #       llm        GeminiLLM / LlamaCppLLM（差在線路格式與 usage 怎麼讀）
 #   加第三家就是傳一個新的 llm 進來，這個檔案不用動。
+from shared.facets import describe
 from shared.knowledge import SYSTEM
 from shared.llm import Usage
 from shared.settings import settings
@@ -103,7 +104,9 @@ class ChatBot:
         回傳 (hits, to_send)。to_send 是 None 代表短路——history 已經補好
         一問一答，呼叫端不必再做事。
         """
-        hits = self.retriever.retrieve(user, k=k if k is not None else self.k)
+        filters = self.retriever.filters_for(user)
+        hits = self.retriever.retrieve(user, k=k if k is not None else self.k,
+                                       filters=filters)
 
         if not hits and not history:
             # 第一句就離題才短路；有上下文的話（「那薪水呢？」這種跟隨問句
@@ -112,7 +115,14 @@ class ChatBot:
             history.append({"role": "assistant", "content": NOT_FOUND})
             return hits, None
 
-        prompt = f"【資料】\n{self._context(hits)}\n\n【問題】\n{user}"
+        # 有過濾條件就講給模型聽。它不知道「台南算南部」，而過濾已經替它
+        # 判斷過了——不說的話它會自己再判一次而且判錯（見 facets.describe）。
+        note = ""
+        if filters:
+            note = ("（【資料】已依「%s」篩選完畢，列出的就是全部符合的職缺。）\n"
+                    % describe(filters))
+        prompt = "【資料】\n%s\n\n%s【問題】\n%s" % (
+            self._context(hits), note, user)
 
         history.append({"role": "user", "content": user})     # 歷史存乾淨的
         if self.history_limit and len(history) > self.history_limit:

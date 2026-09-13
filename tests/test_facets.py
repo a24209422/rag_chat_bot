@@ -6,7 +6,13 @@
 """
 import pytest
 
-from shared.facets import derive, known_districts, match, parse_query
+from shared.facets import (
+    derive,
+    describe,
+    known_districts,
+    match,
+    parse_query,
+)
 from shared.knowledge import Doc
 
 
@@ -118,6 +124,36 @@ def test_詞彙表外的區名不觸發過濾():
     assert parse_query("板橋有工作嗎？", districts=["三重", "內湖"]) == {}
 
 
+# ── 區域詞：「南部」不是資料裡的屬性，是問句裡的說法 ──────────────────
+@pytest.mark.parametrize("q, want", [
+    ("南部有哪些職缺", {"嘉義", "台南", "高雄", "屏東"}),
+    ("北部有什麼",     {"基隆", "台北", "新北", "桃園", "新竹"}),
+    ("中部的職缺",     {"苗栗", "台中", "彰化", "南投", "雲林"}),
+    ("東部的工作",     {"宜蘭", "花蓮", "台東"}),
+])
+def test_區域詞展開成城市(q, want):
+    """不展開的話 parse_query 回空的，於是退回純向量檢索——實測問「南部有哪些
+    職缺」撈回 JETGO-CONTENT-01、Kneron-01、T504.4，一個南部的都沒有，
+    模型只好誠實回「資料裡沒有」。錯的是檢索不是生成。"""
+    assert set(parse_query(q)["city"]) == want
+
+
+def test_區域詞與城市名並存時不重複():
+    assert parse_query("南部或台南的職缺")["city"].count("台南") == 1
+
+
+def test_區域詞不會誤傷單純的城市問句():
+    """「台北」裡沒有「北部」、「台中」裡沒有「中部」，確認沒有子字串誤配。"""
+    assert parse_query("台北有職缺嗎") == {"city": ["台北"]}
+    assert parse_query("台中有職缺嗎") == {"city": ["台中"]}
+
+
+def test_語料沒有的城市抽得出條件但篩完是空的():
+    """抽得出來、篩完沒有 → 這時候回「資料裡沒有」才是正確答案，
+    跟展開之前「撈到一堆台北的職缺然後說沒有」是完全不同的兩件事。"""
+    assert parse_query("嘉義有職缺嗎") == {"city": ["嘉義"]}
+
+
 # ── 比對：多值只要有交集就算符合 ──────────────────────────────────────
 def test_match_多值有交集就算符合():
     facets = {"city": ["台北", "新竹"], "kind": ["全職", "兼職"]}
@@ -141,3 +177,10 @@ def test_match_欄位缺席就當不符合():
     """facets 裡沒有這個欄位（不是空清單，是根本沒有）也不能炸。"""
     assert not match({}, {"city": ["台北"]})
     assert match({}, {})                      # 沒有條件 = 全部符合
+
+
+def test_describe_把條件講成人話():
+    """這句話會塞進 prompt——模型不知道台南算南部，得把展開結果寫給它看。"""
+    assert describe({"city": ["台南", "高雄"]}) == "地點＝台南／高雄"
+    assert describe({"remote": True}) == "可遠端＝是"
+    assert describe({"city": ["台北"], "kind": ["實習"]}) == "地點＝台北、工作性質＝實習"

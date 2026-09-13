@@ -66,6 +66,15 @@ class BaseRetriever:
             self._districts = known_districts(self.docs)
         return self._districts
 
+    def filters_for(self, question):
+        """問句抽得出哪些精確過濾條件。
+
+        獨立成一個方法是因為 ChatBot 也需要知道：篩選過的結果代表「這就是
+        全部符合的」，而那件事得講給模型聽——它自己判斷不出來
+        （見 shared/facets.py 的 describe）。
+        """
+        return parse_query(question, self.districts)
+
     def doc_vecs(self):
         """整個索引的向量。給 tools/probe_threshold.py 用。"""
         return self.store.vectors
@@ -143,7 +152,7 @@ class BaseRetriever:
         if min_score is None:
             min_score = self.min_score
         if filters is None:
-            filters = parse_query(question, self.districts)
+            filters = self.filters_for(question)
 
         docs = self.docs
         qv = self.embed([question], "RETRIEVAL_QUERY")[0]
