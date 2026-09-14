@@ -1,10 +1,10 @@
 """對真實 data/jobs.json 的回歸測試。
 
-README 裡那張 metadata 過濾的表是實測數字。這裡把它釘成測試——
+docs/design-notes.md 裡那張 metadata 過濾的表是實測數字。這裡把它釘成測試——
 而且完全不需要 embedding 模型：過濾是 facet 決定的，跟分數無關，
 所以「撈回幾個」用 parse_query + match 就算得出來，整批不到一秒。
 
-重建 jobs.json 之後這些數字會變，那時要一起更新（README 也是）。
+重建 jobs.json 之後這些數字會變，那時要一起更新（design-notes 也是）。
 """
 from pathlib import Path
 
@@ -51,7 +51,7 @@ def test_區名詞彙表(docs):
     ("台北的實習有哪些？",    3),
 ])
 def test_篩選型問句撈回完整清單(docs, question, expected):
-    """這些數字就是 README「metadata 過濾」那張表。"""
+    """這些數字就是 design-notes「metadata 過濾」那張表。"""
     assert len(groups_matching(docs, question)) == expected
 
 
